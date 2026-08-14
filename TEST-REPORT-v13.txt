@@ -1,0 +1,24 @@
+اختبارات الإصدار ١٣
+
+1) JavaScript syntax: PASS
+2) HTML duplicate IDs: PASS (لا يوجد)
+3) UI smoke test: PASS
+   - week workspace: 1
+   - day cards: 5
+   - evidence studio: موجود
+   - A4 preview: موجود
+4) Evidence upload test: PASS
+   - 5 images accepted
+   - 5 metadata editors
+   - 2 A4 preview pages
+5) JSON privacy test: PASS
+   - evidence text metadata included
+   - evidence photos excluded
+6) Evidence Word DOCX: PASS
+   - 4 images => 1 rendered A4 page
+   - 5 images => 2 rendered A4 pages
+   - DOCX ZIP integrity: PASS
+7) Main Word DOCX: PASS
+8) Main Excel XLSX: PASS
+9) PNG canvas: PASS — 2480×3508
+10) PWA cache bumped to v13.

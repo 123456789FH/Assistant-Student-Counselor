@@ -7,7 +7,7 @@
   <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
   <meta name="referrer" content="no-referrer" />
-  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٢</title>
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٣</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
@@ -37,6 +37,7 @@
         <button class="btn" id="printBtn" type="button">🖨️ طباعة الخطة / PDF</button>
         <button class="btn" id="printFinalReportBtn" type="button">📄 التقرير الختامي</button>
         <button class="btn btn--soft" id="reportSettingsBtn" type="button">⚙️ إعدادات التقرير</button>
+        <button class="btn btn--evidence" id="evidenceStudioBtn" type="button">📷 نموذج شواهد التنفيذ</button>
 
         <details class="export-menu" id="exportMenu">
           <summary class="btn">📤 تصدير / استيراد</summary>
@@ -74,6 +75,7 @@
           <span>📸 توثيق مؤقت</span>
           <span>📊 قياس أثر</span>
           <span>🧾 مساعد التوثيق</span>
+          <span>📷 شواهد تنفيذ A4</span>
         </div>
       </section>
 
@@ -114,7 +116,7 @@
             <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
             <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
           </div>
-          <span class="version-chip">الإصدار ١٢</span>
+          <span class="version-chip">الإصدار ١٣</span>
         </div>
         <div class="week-navigator" aria-label="التنقل بين الأسابيع">
           <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
@@ -127,12 +129,69 @@
         </div>
         <div id="weekWorkspace" class="week-workspace" aria-live="polite"></div>
       </section>
+
+      <section class="evidence-studio-section" id="evidenceStudioSection" aria-labelledby="evidenceStudioTitle">
+        <div class="section-title evidence-studio-title">
+          <div>
+            <span class="eyebrow">توثيق مدرسي احترافي</span>
+            <h2 id="evidenceStudioTitle">نموذج شواهد تنفيذ برنامج مدرسي</h2>
+            <p class="section-description">أنشئ صفحة شواهد مستقلة للأسبوع الحالي: أربع صور واضحة في كل صفحة A4، مع بيانات البرنامج ووصف كل شاهد وملخص التنفيذ، ثم صدّرها Word أو PDF أو PNG عالي الدقة.</p>
+          </div>
+          <span class="evidence-week-chip" id="evidenceWeekChip">الأسبوع</span>
+        </div>
+
+        <div class="evidence-studio-shell">
+          <div class="evidence-form-card">
+            <div class="evidence-form-head">
+              <div><strong>بيانات نموذج الشواهد</strong><small>تُحفظ النصوص محليًا؛ صور الشواهد تبقى مؤقتة في الجلسة الحالية فقط.</small></div>
+              <button class="btn btn--soft" id="evidenceCopyWeekBtn" type="button">↙ تعبئة من بيانات الأسبوع</button>
+            </div>
+            <div class="evidence-form-grid">
+              <label><span>اسم المدرسة</span><input id="evidenceSchoolName" type="text" maxlength="120" placeholder="اكتب اسم المدرسة" /></label>
+              <label><span>نوع المدرسة</span><select id="evidenceSchoolType"><option value="">اختر</option><option value="بنين">بنين</option><option value="بنات">بنات</option></select></label>
+              <label class="wide"><span>اسم البرنامج أو الفعالية</span><input id="evidenceProgramName" type="text" maxlength="300" placeholder="مثال: برنامج تعزيز الانضباط المدرسي" /></label>
+              <label><span>مجال البرنامج</span><select id="evidenceProgramDomain"><option value="">اختر المجال</option><option>نشاط طلابي</option><option>توجيه طلابي</option><option>تعليمي</option><option>توعوي</option><option>مجتمعي</option></select></label>
+              <label><span>تاريخ التنفيذ</span><input id="evidenceExecutionDate" type="text" maxlength="80" placeholder="مثال: ١٤٤٨/٠٣/١٢هـ" /></label>
+              <label><span>الفئة المستهدفة</span><input id="evidenceTargetGroup" type="text" maxlength="200" placeholder="اكتب الفئة المستهدفة" /></label>
+              <label><span id="evidenceExecutorLabel">منفذ البرنامج</span><input id="evidenceExecutor" type="text" maxlength="200" placeholder="الاسم أو الصفة" /></label>
+              <div class="evidence-count-card"><span>عدد الصور المرفقة</span><strong id="evidenceAttachedCount">٠</strong><small>٤ صور لكل صفحة A4</small></div>
+            </div>
+
+            <div class="evidence-editor-block">
+              <div class="evidence-editor-title"><strong>📷 بيانات الشواهد المرفقة</strong><span>لا نخمن محتوى الصورة؛ الوصف الافتراضي «شاهد تنفيذ».</span></div>
+              <div id="evidenceItemsEditor" class="evidence-items-editor"></div>
+            </div>
+
+            <div class="evidence-form-grid evidence-summary-grid">
+              <label class="wide"><span>ملخص التنفيذ</span><textarea id="evidenceSummary" maxlength="900" placeholder="سطران أو ثلاثة من البيانات الفعلية فقط"></textarea></label>
+              <label class="wide"><span>أبرز مخرج موثّق</span><input id="evidenceOutput" type="text" maxlength="500" placeholder="اكتب المخرج الموثق إن وجد" /></label>
+              <label class="wide"><span>ملاحظات</span><textarea id="evidenceNotes" maxlength="700" placeholder="خانة اختيارية"></textarea></label>
+              <label><span id="evidenceSignatureLabel">اسم المنفذ والتوقيع</span><input id="evidenceSignature" type="text" maxlength="200" placeholder="الاسم / يترك مكان للتوقيع" /></label>
+              <label><span>التاريخ</span><input id="evidenceFooterDate" type="text" maxlength="80" placeholder="التاريخ" /></label>
+            </div>
+
+            <div class="evidence-studio-actions">
+              <button class="btn btn--primary" id="exportEvidenceWordBtn" type="button">📝 Word للشواهد</button>
+              <button class="btn" id="printEvidencePdfBtn" type="button">🖨️ PDF / طباعة A4</button>
+              <button class="btn btn--soft" id="exportEvidencePngBtn" type="button">🖼️ PNG عالي الدقة</button>
+            </div>
+            <p class="evidence-logo-guidance">🏛️ لإظهار شعار وزارة التعليم أو الجهة في رأس نموذج الشواهد، ارفعي الشعار المعتمد من «إعدادات التقرير».</p>
+            <p class="evidence-studio-privacy">🔒 لا تدخل أسماء طلاب أو بيانات حساسة. استخدم صورًا لا تسمح بالتعرّف على الأشخاص، والتزم بسياسة الجهة عند حفظ أو مشاركة الملفات الناتجة.</p>
+          </div>
+
+          <div class="evidence-preview-panel">
+            <div class="evidence-preview-head"><div><span class="eyebrow">معاينة مباشرة</span><strong>صفحات A4</strong></div><small>كل ٤ صور = صفحة مستقلة</small></div>
+            <div id="evidenceDocumentPreview" class="evidence-document-preview"></div>
+          </div>
+        </div>
+      </section>
+
     </main>
 
     <footer class="footer">
       <strong>أ/ فاطمة هزازي</strong>
       <span>•</span>
-      <span>مساعد الموجه الطلابي — الإصدار ١٢</span>
+      <span>مساعد الموجه الطلابي — الإصدار ١٣</span>
     </footer>
   </div>
 
@@ -154,8 +213,8 @@
     <div class="logo-settings">
       <div class="logo-settings__preview"><img id="reportLogoPreview" src="forum-logo.png" alt="معاينة شعار التقرير" /></div>
       <div class="logo-settings__actions">
-        <strong>شعار التقرير</strong>
-        <p>PNG أو JPEG أو WebP فقط، بحد أقصى ٢ م.ب. تتم إعادة معالجة الصورة لإزالة البيانات الوصفية غير الضرورية.</p>
+        <strong>شعار التقرير / الجهة</strong>
+        <p>للنماذج الرسمية يمكنك رفع شعار وزارة التعليم أو الجهة المعتمد. PNG أو JPEG أو WebP فقط، بحد أقصى ٢ م.ب. وتتم إعادة معالجة الصورة لإزالة البيانات الوصفية غير الضرورية.</p>
         <label class="btn btn--soft">🖼️ اختيار شعار<input id="reportLogoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden /></label>
         <button class="btn" id="resetReportLogoBtn" type="button">استخدام شعار التطبيق الافتراضي</button>
       </div>

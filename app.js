@@ -197,7 +197,7 @@ const weeks = [
 
 const storageKey = "interactive-guidance-plan-v1";
 const exportSchema = "student-counselor-assistant";
-const exportVersion = 6;
+const exportVersion = 7;
 const evidenceCache = {};
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_EVIDENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -215,6 +215,7 @@ function blankState() {
     indicators: {},
     noor: {},
     dayPlans: {},
+    evidenceDocs: {},
     activeWeekId: 1,
     report: {
       userName: "",
@@ -244,6 +245,7 @@ function loadState() {
       indicators: parsed?.indicators && typeof parsed.indicators === "object" ? parsed.indicators : {},
       noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {},
       dayPlans: parsed?.dayPlans && typeof parsed.dayPlans === "object" ? parsed.dayPlans : {},
+      evidenceDocs: parsed?.evidenceDocs && typeof parsed.evidenceDocs === "object" ? parsed.evidenceDocs : {},
       activeWeekId: weeks.some((week) => week.id === Number(parsed?.activeWeekId)) ? Number(parsed.activeWeekId) : 1
     };
   } catch {
@@ -1228,6 +1230,7 @@ function setActiveWeek(weekId) {
   persistState();
   renderWeekWorkspace();
   refreshDynamicUI();
+  syncEvidenceStudio();
   document.querySelector("#weekWorkspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1362,7 +1365,12 @@ function renderWeekWorkspace() {
   pdf.type = "button";
   pdf.textContent = "🖨️ تقرير PDF لهذا الأسبوع";
   pdf.addEventListener("click", () => printWeekReport(week));
-  actions.append(save, excel, word, pdf);
+  const evidenceDoc = document.createElement("button");
+  evidenceDoc.className = "btn btn--evidence";
+  evidenceDoc.type = "button";
+  evidenceDoc.textContent = "📷 نموذج شواهد البرنامج";
+  evidenceDoc.addEventListener("click", () => { syncEvidenceStudio(); document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+  actions.append(save, excel, word, pdf, evidenceDoc);
   body.appendChild(actions);
 
   article.append(head, body);
@@ -1490,9 +1498,9 @@ async function processImage(file, { maxDimension = 1600, quality = 0.82, outputT
 
 async function handleEvidenceUpload(weekId, files) {
   const current = evidenceCache[weekId] || [];
-  const remaining = Math.max(0, 6 - current.length);
+  const remaining = Math.max(0, 12 - current.length);
   if (!remaining) {
-    toast("الحد الأقصى ٦ صور مؤقتة لكل أسبوع");
+    toast("الحد الأقصى ١٢ صورة مؤقتة لكل أسبوع (٣ صفحات A4)");
     return;
   }
 
@@ -1908,6 +1916,8 @@ function cloneStateForWeeks(selection) {
   clean.activeWeekId = selectedWeeks[0]?.id || 1;
 
   selectedWeeks.forEach((week) => {
+    const evidenceKey = completionKey(week.id);
+    if (state.evidenceDocs?.[evidenceKey]) clean.evidenceDocs[evidenceKey] = sanitizeEvidenceDoc(state.evidenceDocs[evidenceKey]);
     const key = completionKey(week.id);
     clean.completed[key] = Boolean(state.completed?.[key]);
     const indicator = state.indicators?.[key] || {};
@@ -2033,6 +2043,12 @@ function sanitizedImportedState(raw) {
           done: Boolean(item.done)
         };
       });
+    });
+  }
+  if (source.evidenceDocs && typeof source.evidenceDocs === "object") {
+    weeks.forEach((week) => {
+      const key = completionKey(week.id);
+      if (source.evidenceDocs[key] && typeof source.evidenceDocs[key] === "object") clean.evidenceDocs[key] = sanitizeEvidenceDoc(source.evidenceDocs[key]);
     });
   }
   clean.activeWeekId = weeks.some((week) => week.id === Number(source.activeWeekId)) ? Number(source.activeWeekId) : 1;
@@ -2228,7 +2244,7 @@ function defaultLogoJpegDataUrl() {
 }
 
 function docxRun(text, { bold = false, size = 22 } = {}) {
-  return `<w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
+  return `<w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/>${bold ? "<w:b/>" : ""}<w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r>`;
 }
 
 function docxParagraph(text, options = {}) {
@@ -2285,6 +2301,7 @@ function wireReportSettings() {
       state.report.logoDataUrl = dataUrl;
       state.report.logoName = safeString(file.name, 160);
       refreshReportSettingsUI();
+      syncEvidenceStudio();
       toast("تم تجهيز الشعار بأمان");
     } catch {
       toast("الشعار يجب أن يكون PNG/JPEG/WebP وبحجم لا يتجاوز ٢ م.ب");
@@ -2296,7 +2313,8 @@ function wireReportSettings() {
     state.report.logoDataUrl = "";
     state.report.logoName = "";
     refreshReportSettingsUI();
-    toast("تمت استعادة شعار الملتقى الافتراضي");
+    syncEvidenceStudio();
+    toast("تمت استعادة شعار التطبيق الافتراضي للتقارير العامة");
   });
 
   document.querySelector("#saveReportSettingsBtn")?.addEventListener("click", () => {
@@ -2307,6 +2325,7 @@ function wireReportSettings() {
     state.report.academicYear = safeString(document.querySelector("#reportAcademicYear")?.value, 60);
     persistState("تم حفظ إعدادات التقرير");
     refreshReportSettingsUI();
+    syncEvidenceStudio();
     dialog?.close();
   });
   refreshReportSettingsUI();
@@ -2392,8 +2411,10 @@ function init() {
   wireToolbar();
   wireReportSettings();
   wireWeekNavigator();
+  wireEvidenceStudio();
   renderAll();
   loadEvidence();
+  syncEvidenceStudio();
   wirePrivacyGate();
   wirePWA();
 }
@@ -2476,7 +2497,7 @@ function docxPageBreak() {
 function docxCell(content, { width = 2200, fill = "FFFFFF", bold = false, center = false, color = "173F3D", size = 20, margin = 90 } = {}) {
   const text = content == null || content === "" ? "—" : String(content);
   const jc = center ? "center" : "right";
-  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="${margin}" w:type="dxa"/><w:left w:w="${margin}" w:type="dxa"/><w:bottom w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:bidi/><w:jc w:val="${jc}"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${bold ? "<w:b/>" : ""}<w:color w:val="${color}"/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p></w:tc>`;
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="${margin}" w:type="dxa"/><w:left w:w="${margin}" w:type="dxa"/><w:bottom w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:bidi/><w:jc w:val="${jc}"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/>${bold ? "<w:b/>" : ""}<w:color w:val="${color}"/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p></w:tc>`;
 }
 
 function docxBand(text) {
@@ -2644,10 +2665,10 @@ ${reportParts.join("")}
 
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
 
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
 
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(weekExportTitle(selectedWeeks))}</dc:title><dc:subject>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</dc:subject><dc:creator>مساعد الموجه الطلابي</dc:creator><cp:lastModifiedBy>مساعد الموجه الطلابي</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>12.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>13.0</AppVersion></Properties>`;
 
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
@@ -2661,7 +2682,7 @@ ${reportParts.join("")}
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v12.docx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v13.docx`);
   setStatus("تم تجهيز Word الاحترافي");
   toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
@@ -2983,9 +3004,505 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v12.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v13.xlsx`);
   toast(selectedWeeks.length === 1
     ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
     : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
 }
 
+
+
+/* ============================================================
+   v13 — استوديو شواهد تنفيذ برنامج مدرسي
+   ٤ صور واضحة لكل صفحة A4 + Word/PDF/PNG
+   ============================================================ */
+
+const evidenceTypeOptions = ["صورة تنفيذ", "مشاركة طلاب", "مشاركة طالبات", "إعلان", "منتج طلابي", "منتج طالبات", "حضور", "أخرى"];
+function evidenceTypeOptionsForSchool(schoolType) {
+  if (schoolType === "بنات") return ["صورة تنفيذ", "مشاركة طالبات", "إعلان", "منتج طالبات", "حضور", "أخرى"];
+  if (schoolType === "بنين") return ["صورة تنفيذ", "مشاركة طلاب", "إعلان", "منتج طلابي", "حضور", "أخرى"];
+  return ["صورة تنفيذ", "إعلان", "حضور", "أخرى"];
+}
+function normalizeEvidenceTypeForSchool(type, schoolType) {
+  let value = evidenceTypeOptions.includes(type) ? type : "صورة تنفيذ";
+  if (schoolType === "بنات") {
+    if (value === "مشاركة طلاب") value = "مشاركة طالبات";
+    if (value === "منتج طلابي") value = "منتج طالبات";
+  } else if (schoolType === "بنين") {
+    if (value === "مشاركة طالبات") value = "مشاركة طلاب";
+    if (value === "منتج طالبات") value = "منتج طلابي";
+  }
+  return value;
+}
+function evidenceProgramTitle(programName) {
+  const name = safeString(programName, 300).trim();
+  if (!name) return "شواهد تنفيذ برنامج مدرسي";
+  return /^برنامج(?:\s|$)/.test(name) ? `شواهد تنفيذ ${name}` : `شواهد تنفيذ برنامج ${name}`;
+}
+const MAX_EVIDENCE_PER_WEEK_V13 = 12;
+let evidencePreviewTimer = null;
+
+function blankEvidenceDoc() {
+  return {
+    schoolName: "",
+    schoolType: "",
+    programName: "",
+    domain: "توجيه طلابي",
+    executionDate: "",
+    targetGroup: "",
+    executor: "",
+    summary: "",
+    output: "",
+    notes: "",
+    signature: "",
+    footerDate: "",
+    items: []
+  };
+}
+
+function sanitizeEvidenceDoc(source) {
+  const doc = source && typeof source === "object" ? source : {};
+  const schoolType = ["بنين", "بنات"].includes(doc.schoolType) ? doc.schoolType : "";
+  return {
+    schoolName: safeString(doc.schoolName, 120),
+    schoolType,
+    programName: safeString(doc.programName, 300),
+    domain: ["نشاط طلابي", "توجيه طلابي", "تعليمي", "توعوي", "مجتمعي"].includes(doc.domain) ? doc.domain : "توجيه طلابي",
+    executionDate: safeString(doc.executionDate, 80),
+    targetGroup: safeString(doc.targetGroup, 200),
+    executor: safeString(doc.executor, 200),
+    summary: safeString(doc.summary, 900),
+    output: safeString(doc.output, 500),
+    notes: safeString(doc.notes, 700),
+    signature: safeString(doc.signature, 200),
+    footerDate: safeString(doc.footerDate, 80),
+    items: Array.isArray(doc.items) ? doc.items.slice(0, MAX_EVIDENCE_PER_WEEK_V13).map((item) => ({
+      description: safeString(item?.description, 240) || "شاهد تنفيذ",
+      type: normalizeEvidenceTypeForSchool(item?.type, schoolType),
+      note: safeString(item?.note, 300)
+    })) : []
+  };
+}
+
+function getEvidenceDoc(weekId) {
+  state.evidenceDocs ||= {};
+  const key = completionKey(weekId);
+  if (!state.evidenceDocs[key] || typeof state.evidenceDocs[key] !== "object") state.evidenceDocs[key] = blankEvidenceDoc();
+  const clean = sanitizeEvidenceDoc(state.evidenceDocs[key]);
+  state.evidenceDocs[key] = clean;
+  return clean;
+}
+
+function evidenceWeek() {
+  return weeks.find((week) => week.id === Number(state.activeWeekId)) || weeks[0];
+}
+
+function evidenceDisplayData(week) {
+  const doc = getEvidenceDoc(week.id);
+  const record = getNoorRecord(week.id);
+  return {
+    ...doc,
+    schoolName: doc.schoolName || state.school || "",
+    programName: doc.programName || record.program || "",
+    targetGroup: doc.targetGroup || record.targetGroup || "",
+    executor: doc.executor || state.report?.userName || ""
+  };
+}
+
+function ensureEvidenceItemMetadata(weekId) {
+  const doc = getEvidenceDoc(weekId);
+  const count = Math.min((evidenceCache[weekId] || []).length, MAX_EVIDENCE_PER_WEEK_V13);
+  while (doc.items.length < count) doc.items.push({ description: "شاهد تنفيذ", type: "صورة تنفيذ", note: "" });
+  if (doc.items.length > MAX_EVIDENCE_PER_WEEK_V13) doc.items = doc.items.slice(0, MAX_EVIDENCE_PER_WEEK_V13);
+  return doc;
+}
+
+function evidenceGenderLabels(type) {
+  if (type === "بنات") return { executor: "منفذة البرنامج", signature: "اسم المنفذة والتوقيع", targetPlaceholder: "مثال: طالبات الصف الثالث" };
+  if (type === "بنين") return { executor: "منفذ البرنامج", signature: "اسم المنفذ والتوقيع", targetPlaceholder: "مثال: طلاب الصف الثالث" };
+  return { executor: "منفذ/منفذة البرنامج", signature: "اسم المنفذ/المنفذة والتوقيع", targetPlaceholder: "اكتب الفئة المستهدفة" };
+}
+
+function scheduleEvidencePreview() {
+  clearTimeout(evidencePreviewTimer);
+  evidencePreviewTimer = setTimeout(() => renderEvidenceDocumentPreview(evidenceWeek()), 70);
+}
+
+function bindEvidenceTextField(id, field, { globalSchool = false } = {}) {
+  const el = document.querySelector(`#${id}`);
+  if (!el) return;
+  const eventName = el.tagName === "SELECT" ? "change" : "input";
+  el.addEventListener(eventName, () => {
+    const week = evidenceWeek();
+    const doc = getEvidenceDoc(week.id);
+    doc[field] = safeString(el.value, field === "summary" ? 900 : field === "notes" ? 700 : field === "output" ? 500 : 300);
+    if (globalSchool) state.school = safeString(el.value, 120);
+    persistState();
+    if (field === "schoolType") {
+      const doc = getEvidenceDoc(week.id);
+      doc.items.forEach((item) => { item.type = normalizeEvidenceTypeForSchool(item.type, doc.schoolType); });
+      syncEvidenceGenderLabels();
+      renderEvidenceItemsEditor(week.id);
+    }
+    scheduleEvidencePreview();
+  });
+}
+
+function wireEvidenceStudio() {
+  bindEvidenceTextField("evidenceSchoolName", "schoolName", { globalSchool: true });
+  bindEvidenceTextField("evidenceSchoolType", "schoolType");
+  bindEvidenceTextField("evidenceProgramName", "programName");
+  bindEvidenceTextField("evidenceProgramDomain", "domain");
+  bindEvidenceTextField("evidenceExecutionDate", "executionDate");
+  bindEvidenceTextField("evidenceTargetGroup", "targetGroup");
+  bindEvidenceTextField("evidenceExecutor", "executor");
+  bindEvidenceTextField("evidenceSummary", "summary");
+  bindEvidenceTextField("evidenceOutput", "output");
+  bindEvidenceTextField("evidenceNotes", "notes");
+  bindEvidenceTextField("evidenceSignature", "signature");
+  bindEvidenceTextField("evidenceFooterDate", "footerDate");
+
+  document.querySelector("#evidenceStudioBtn")?.addEventListener("click", () => {
+    syncEvidenceStudio();
+    document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  document.querySelector("#evidenceCopyWeekBtn")?.addEventListener("click", () => {
+    copyEvidenceDataFromWeek(evidenceWeek());
+  });
+  document.querySelector("#exportEvidenceWordBtn")?.addEventListener("click", () => exportEvidenceWord(evidenceWeek()));
+  document.querySelector("#printEvidencePdfBtn")?.addEventListener("click", () => printEvidenceDocument(evidenceWeek()));
+  document.querySelector("#exportEvidencePngBtn")?.addEventListener("click", () => exportEvidencePng(evidenceWeek()));
+}
+
+function copyEvidenceDataFromWeek(week) {
+  const doc = getEvidenceDoc(week.id);
+  const record = getNoorRecord(week.id);
+  doc.schoolName = state.school || doc.schoolName;
+  doc.programName = record.program || doc.programName || week.programs[0] || "";
+  doc.targetGroup = record.targetGroup || doc.targetGroup;
+  doc.executor = state.report?.userName || doc.executor;
+  if (!doc.summary) doc.summary = record.procedure ? safeString(record.procedure, 900) : "";
+  if (!doc.output) doc.output = getIndicator(week.id).impactNote ? safeString(getIndicator(week.id).impactNote, 500) : "";
+  persistState("تمت تعبئة نموذج الشواهد من بيانات الأسبوع المدخلة");
+  syncEvidenceStudio();
+}
+
+function syncEvidenceGenderLabels() {
+  const doc = getEvidenceDoc(evidenceWeek().id);
+  const labels = evidenceGenderLabels(doc.schoolType);
+  const executorLabel = document.querySelector("#evidenceExecutorLabel");
+  const signatureLabel = document.querySelector("#evidenceSignatureLabel");
+  const target = document.querySelector("#evidenceTargetGroup");
+  if (executorLabel) executorLabel.textContent = labels.executor;
+  if (signatureLabel) signatureLabel.textContent = labels.signature;
+  if (target) target.placeholder = labels.targetPlaceholder;
+}
+
+function syncEvidenceStudio() {
+  const week = evidenceWeek();
+  const doc = ensureEvidenceItemMetadata(week.id);
+  const values = {
+    evidenceSchoolName: doc.schoolName || state.school || "",
+    evidenceSchoolType: doc.schoolType || "",
+    evidenceProgramName: doc.programName || getNoorRecord(week.id).program || "",
+    evidenceProgramDomain: doc.domain || "توجيه طلابي",
+    evidenceExecutionDate: doc.executionDate || "",
+    evidenceTargetGroup: doc.targetGroup || getNoorRecord(week.id).targetGroup || "",
+    evidenceExecutor: doc.executor || state.report?.userName || "",
+    evidenceSummary: doc.summary || "",
+    evidenceOutput: doc.output || "",
+    evidenceNotes: doc.notes || "",
+    evidenceSignature: doc.signature || "",
+    evidenceFooterDate: doc.footerDate || ""
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const el = document.querySelector(`#${id}`);
+    if (el && el.value !== value) el.value = value;
+  });
+  const chip = document.querySelector("#evidenceWeekChip");
+  if (chip) chip.textContent = `${week.title} • ${week.dates[0]} — ${week.dates[1]}`;
+  const count = document.querySelector("#evidenceAttachedCount");
+  if (count) count.textContent = arNum((evidenceCache[week.id] || []).length);
+  syncEvidenceGenderLabels();
+  renderEvidenceItemsEditor(week.id);
+  renderEvidenceDocumentPreview(week);
+}
+
+function renderEvidenceItemsEditor(weekId) {
+  const host = document.querySelector("#evidenceItemsEditor");
+  if (!host || Number(state.activeWeekId) !== Number(weekId)) return;
+  const photos = evidenceCache[weekId] || [];
+  const doc = ensureEvidenceItemMetadata(weekId);
+  host.innerHTML = "";
+  if (!photos.length) {
+    host.innerHTML = '<div class="evidence-editor-empty">أضف صور الشواهد من قسم «صور التوثيق» في الأسبوع، ثم ستظهر هنا حقول الوصف والنوع والملاحظة لكل صورة.</div>';
+    return;
+  }
+  photos.forEach((photo, index) => {
+    const meta = doc.items[index] || { description: "شاهد تنفيذ", type: "صورة تنفيذ", note: "" };
+    const card = document.createElement("article");
+    card.className = "evidence-meta-card";
+    card.innerHTML = `<div class="evidence-meta-thumb"><img src="${photo.dataUrl}" alt="شاهد ${index + 1}"><span>الشاهد ${arNum(index + 1)}</span></div>`;
+    const fields = document.createElement("div");
+    fields.className = "evidence-meta-fields";
+    const description = document.createElement("input");
+    description.type = "text"; description.maxLength = 240; description.value = meta.description || "شاهد تنفيذ"; description.placeholder = "وصف مختصر — أو شاهد تنفيذ";
+    description.addEventListener("input", () => { doc.items[index].description = safeString(description.value, 240) || "شاهد تنفيذ"; persistState(); scheduleEvidencePreview(); });
+    const type = document.createElement("select");
+    const allowedTypes = evidenceTypeOptionsForSchool(doc.schoolType);
+    allowedTypes.forEach((optionText) => { const option = document.createElement("option"); option.value=optionText; option.textContent=optionText; type.appendChild(option); });
+    type.value = allowedTypes.includes(meta.type) ? meta.type : "صورة تنفيذ";
+    type.addEventListener("change", () => { doc.items[index].type = type.value; persistState(); scheduleEvidencePreview(); });
+    const note = document.createElement("input");
+    note.type = "text"; note.maxLength = 300; note.value = meta.note || ""; note.placeholder = "ملاحظة مختصرة عند الحاجة";
+    note.addEventListener("input", () => { doc.items[index].note = safeString(note.value, 300); persistState(); scheduleEvidencePreview(); });
+    fields.append(description, type, note);
+    card.appendChild(fields);
+    host.appendChild(card);
+  });
+}
+
+function evidencePhotoGroups(weekId) {
+  const photos = (evidenceCache[weekId] || []).slice(0, MAX_EVIDENCE_PER_WEEK_V13);
+  if (!photos.length) return [[]];
+  const groups = [];
+  for (let i = 0; i < photos.length; i += 4) groups.push(photos.slice(i, i + 4));
+  return groups;
+}
+
+function evidencePageHtml(week, group, pageIndex, pageCount, { printable = false } = {}) {
+  const data = evidenceDisplayData(week);
+  const doc = getEvidenceDoc(week.id);
+  const labels = evidenceGenderLabels(data.schoolType);
+  const startIndex = pageIndex * 4;
+  const logo = state.report?.logoDataUrl || "";
+  const title = escapeHtml(evidenceProgramTitle(data.programName));
+  const sourceSlots = group.length ? group : [null, null, null, null];
+  const photoCells = sourceSlots.map((photo, slot) => {
+    const idx = startIndex + slot;
+    const meta = doc.items[idx] || { description: "شاهد تنفيذ", type: "صورة تنفيذ", note: "" };
+    if (!photo) return `<div class="evidence-sheet-slot evidence-sheet-slot--empty"><span>مساحة شاهد</span></div>`;
+    return `<figure class="evidence-sheet-slot"><div class="evidence-sheet-photo"><img src="${photo.dataUrl}" alt="الشاهد ${idx + 1}"></div><figcaption><strong>الشاهد ${arNum(idx + 1)} — ${escapeHtml(meta.description || "شاهد تنفيذ")}</strong><span>نوع الشاهد: ${escapeHtml(meta.type || "صورة تنفيذ")}</span>${meta.note ? `<small>${escapeHtml(meta.note)}</small>` : ""}</figcaption></figure>`;
+  }).join("");
+  const isLast = pageIndex === pageCount - 1;
+  const footer = isLast ? `<div class="evidence-sheet-summary"><div><b>ملخص التنفيذ</b><p>${escapeHtml(data.summary || "") || "&nbsp;"}</p></div><div><b>أبرز مخرج موثّق</b><p>${escapeHtml(data.output || "") || "&nbsp;"}</p></div><div><b>ملاحظات</b><p>${escapeHtml(data.notes || "") || "&nbsp;"}</p></div><div class="evidence-sign"><span><b>${labels.signature}:</b> ${escapeHtml(data.signature || data.executor || "")}</span><span><b>التاريخ:</b> ${escapeHtml(data.footerDate || "")}</span></div></div>` : `<div class="evidence-continuation">صفحة شواهد إضافية • ${arNum(pageIndex + 1)} من ${arNum(pageCount)}</div>`;
+  return `<article class="evidence-a4-page${printable ? " is-printable" : ""}">
+    <header class="evidence-sheet-header"><div class="evidence-official"><strong>المملكة العربية السعودية</strong><span>وزارة التعليم</span><span>${state.admin ? `إدارة التعليم: ${escapeHtml(state.admin)}` : "إدارة التعليم"}</span><span>${data.schoolName ? `المدرسة: ${escapeHtml(data.schoolName)}` : "اسم المدرسة"}</span></div><div class="evidence-sheet-logo">${logo ? `<img src="${logo}" alt="شعار الجهة">` : '<span>شعار الجهة</span>'}</div></header>
+    <div class="evidence-sheet-title"><span>${escapeHtml(week.title)} • ${escapeHtml(week.theme)}</span><h3>${title}</h3></div>
+    <div class="evidence-sheet-meta"><span><b>نوع المدرسة:</b> ${escapeHtml(data.schoolType || "—")}</span><span><b>مجال البرنامج:</b> ${escapeHtml(data.domain || "—")}</span><span><b>تاريخ التنفيذ:</b> ${escapeHtml(data.executionDate || "—")}</span><span><b>الفئة المستهدفة:</b> ${escapeHtml(data.targetGroup || "—")}</span><span><b>${labels.executor}:</b> ${escapeHtml(data.executor || "—")}</span><span><b>عدد الصور:</b> ${arNum((evidenceCache[week.id] || []).length)}</span></div>
+    <div class="evidence-sheet-grid evidence-sheet-grid--count-${group.length || 0}">${photoCells}</div>
+    ${footer}
+    <div class="evidence-sheet-brand"><span>ملتقى التعليم التفاعلي</span><strong>أ/ فاطمة هزازي</strong></div>
+  </article>`;
+}
+
+function renderEvidenceDocumentPreview(week) {
+  const host = document.querySelector("#evidenceDocumentPreview");
+  if (!host) return;
+  const groups = evidencePhotoGroups(week.id);
+  host.innerHTML = groups.map((group, index) => evidencePageHtml(week, group, index, groups.length)).join("");
+  const count = document.querySelector("#evidenceAttachedCount");
+  if (count) count.textContent = arNum((evidenceCache[week.id] || []).length);
+}
+
+// v13: إعادة تعريف رفع الصور مع حد ١٢ صورة ومزامنة بيانات الشواهد.
+async function handleEvidenceUpload(weekId, files) {
+  const current = evidenceCache[weekId] || [];
+  const remaining = Math.max(0, MAX_EVIDENCE_PER_WEEK_V13 - current.length);
+  if (!remaining) { toast("الحد الأقصى ١٢ صورة مؤقتة لكل أسبوع (٣ صفحات A4)"); return; }
+  const accepted = [];
+  let rejected = 0;
+  for (const file of files.slice(0, remaining)) {
+    if (!allowedImageTypes.has(file.type) || file.size > MAX_EVIDENCE_FILE_SIZE) { rejected += 1; continue; }
+    accepted.push(file);
+  }
+  if (!accepted.length) { toast("اختر PNG أو JPEG أو WebP بحجم لا يتجاوز ٥ م.ب للصورة"); return; }
+  setStatus("جارٍ تجهيز صور التوثيق المؤقتة…");
+  for (const [index, file] of accepted.entries()) {
+    try {
+      const dataUrl = await processImage(file, { maxDimension: 1500, quality: 0.78, outputType: "image/jpeg" });
+      current.push({ id: `w${weekId}-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`, weekId: Number(weekId), name: safeString(file.name, 160), dataUrl, createdAt: Date.now() + index });
+    } catch { rejected += 1; }
+  }
+  evidenceCache[weekId] = current;
+  ensureEvidenceItemMetadata(weekId);
+  persistState();
+  renderEvidenceGrids(weekId);
+  refreshDynamicUI();
+  if (Number(state.activeWeekId) === Number(weekId)) syncEvidenceStudio();
+  toast(rejected ? "تمت إضافة الصور المقبولة فقط؛ الصور غير الآمنة/الكبيرة رُفضت" : "تمت إضافة صور التوثيق مؤقتًا");
+}
+
+// v13: شبكة الصور مع حذف متزامن لوصف الشاهد المقابل.
+function renderEvidenceGrids(weekId) {
+  const items = evidenceCache[weekId] || [];
+  document.querySelectorAll(`[data-evidence-grid="${weekId}"]`).forEach((grid) => {
+    grid.innerHTML = "";
+    if (!items.length) {
+      const empty = document.createElement("div"); empty.className = "empty-evidence"; empty.textContent = "لم تُضف صور توثيق مؤقتة بعد"; grid.appendChild(empty); return;
+    }
+    items.forEach((item, index) => {
+      const wrap = document.createElement("div"); wrap.className = "evidence-item";
+      const img = document.createElement("img"); img.src = item.dataUrl; img.alt = item.name || "صورة توثيق";
+      const badge = document.createElement("span"); badge.className = "evidence-item-number"; badge.textContent = arNum(index + 1);
+      const remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×"; remove.title = "حذف الصورة المؤقتة";
+      remove.addEventListener("click", () => {
+        if (!confirm("حذف صورة التوثيق المؤقتة؟")) return;
+        evidenceCache[weekId] = (evidenceCache[weekId] || []).filter((entry) => entry.id !== item.id);
+        const doc = getEvidenceDoc(weekId); if (doc.items[index]) doc.items.splice(index, 1);
+        persistState(); renderEvidenceGrids(weekId); refreshDynamicUI(); if (Number(state.activeWeekId) === Number(weekId)) syncEvidenceStudio(); toast("تم حذف الصورة المؤقتة");
+      });
+      wrap.append(img, badge, remove); grid.appendChild(wrap);
+    });
+  });
+  updateEvidenceCounts(weekId);
+  if (Number(state.activeWeekId) === Number(weekId)) { renderEvidenceItemsEditor(weekId); renderEvidenceDocumentPreview(evidenceWeek()); }
+}
+
+function evidencePrintStyles() {
+  return `@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#edf3f2;font-family:Tajawal,Arial,sans-serif;direction:rtl;color:#233b3a}.print-toolbar{position:sticky;top:0;z-index:9;display:flex;gap:8px;justify-content:center;padding:10px;background:#fff;border-bottom:1px solid #d6e3e0}.print-toolbar button{border:0;border-radius:10px;padding:10px 16px;background:#087f79;color:#fff;font-weight:800}.evidence-a4-page{width:210mm;min-height:297mm;margin:10mm auto;background:#fff;padding:10mm 11mm 8mm;display:flex;flex-direction:column;gap:4mm;box-shadow:0 10px 30px rgba(0,0,0,.12);page-break-after:always}.evidence-a4-page:last-child{page-break-after:auto}.evidence-sheet-header{display:grid;grid-template-columns:1fr 34mm;gap:6mm;align-items:center;border-bottom:1.5mm solid #d8b66f;padding-bottom:3mm}.evidence-official{display:flex;flex-direction:column;text-align:center;font-size:10pt;line-height:1.5}.evidence-official strong{font-size:11pt}.evidence-sheet-logo img{width:30mm;height:24mm;object-fit:contain}.evidence-sheet-title{text-align:center}.evidence-sheet-title span{color:#087f79;font-size:9pt;font-weight:800}.evidence-sheet-title h3{margin:1.5mm 0 0;font-size:16pt;color:#075f5b}.evidence-sheet-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm}.evidence-sheet-meta span{border:1px solid #dce8e5;border-radius:2mm;padding:2mm;font-size:8.5pt;background:#f8fbfa}.evidence-sheet-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3mm;min-height:158mm;flex:1}.evidence-sheet-slot{margin:0;border:1px solid #d8e5e2;border-radius:3mm;padding:2mm;background:#fbfdfc;display:flex;flex-direction:column;min-height:0;overflow:hidden}.evidence-sheet-photo{height:54mm;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:2mm;overflow:hidden}.evidence-sheet-photo img{width:100%;height:100%;object-fit:contain}.evidence-sheet-slot figcaption{padding-top:1.7mm;display:grid;gap:.7mm;text-align:right;font-size:8pt;line-height:1.35}.evidence-sheet-slot figcaption strong{color:#075f5b;font-size:8.5pt}.evidence-sheet-slot figcaption small{color:#647a78}.evidence-sheet-slot--empty{align-items:center;justify-content:center;color:#9aabaa;border-style:dashed}.evidence-sheet-summary{border:1px solid #dce7e4;border-radius:3mm;padding:2.5mm;display:grid;grid-template-columns:1fr 1fr;gap:2mm;font-size:8pt}.evidence-sheet-summary>div{background:#f8fbfa;border-radius:2mm;padding:1.5mm}.evidence-sheet-summary p{margin:1mm 0;min-height:5mm}.evidence-sheet-summary .evidence-sign{grid-column:1/-1;display:flex;justify-content:space-between;gap:6mm;border-top:1px solid #d9e5e2;padding-top:2mm}.evidence-continuation{text-align:center;color:#66817e;font-size:8pt}.evidence-sheet-brand{display:flex;justify-content:space-between;border-top:1px solid #e4ecea;padding-top:2mm;color:#087f79;font-size:8pt}@media print{body{background:#fff}.print-toolbar{display:none}.evidence-a4-page{margin:0;box-shadow:none;width:210mm;height:297mm;min-height:297mm;overflow:hidden}}`;
+}
+
+function printEvidenceDocument(week) {
+  const groups = evidencePhotoGroups(week.id);
+  const pages = groups.map((group, index) => evidencePageHtml(week, group, index, groups.length, { printable: true })).join("");
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) { toast("تعذر فتح نافذة الطباعة؛ اسمح بالنوافذ المنبثقة لهذا الموقع"); return; }
+  win.document.open();
+  win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>شواهد تنفيذ — ${escapeHtml(evidenceDisplayData(week).programName || week.title)}</title><style>${evidencePrintStyles()}</style></head><body><div class="print-toolbar"><button onclick="window.print()">🖨️ حفظ / طباعة PDF</button></div>${pages}</body></html>`);
+  win.document.close();
+}
+
+function evidenceDocxRawCell(innerXml, { width = 4700, fill = "FFFFFF", margin = 70, gridSpan = 1 } = {}) {
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${gridSpan > 1 ? `<w:gridSpan w:val="${gridSpan}"/>` : ""}<w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="${margin}" w:type="dxa"/><w:left w:w="${margin}" w:type="dxa"/><w:bottom w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tcMar><w:vAlign w:val="top"/></w:tcPr>${innerXml || docxParagraph("",{spacingAfter:0})}</w:tc>`;
+}
+
+function evidenceDocxMetaTable(data) {
+  const labels = evidenceGenderLabels(data.schoolType);
+  const rows = [
+    ["اسم المدرسة", data.schoolName || "—", "نوع المدرسة", data.schoolType || "—"],
+    ["مجال البرنامج", data.domain || "—", "تاريخ التنفيذ", data.executionDate || "—"],
+    ["الفئة المستهدفة", data.targetGroup || "—", labels.executor, data.executor || "—"]
+  ];
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="D9E6E3"/><w:left w:val="single" w:sz="4" w:color="D9E6E3"/><w:bottom w:val="single" w:sz="4" w:color="D9E6E3"/><w:right w:val="single" w:sz="4" w:color="D9E6E3"/><w:insideH w:val="single" w:sz="4" w:color="D9E6E3"/><w:insideV w:val="single" w:sz="4" w:color="D9E6E3"/></w:tblBorders></w:tblPr>${rows.map(r=>`<w:tr>${docxCell(r[0],{width:1500,fill:"EAF7F4",bold:true,size:18})}${docxCell(r[1],{width:3200,size:18})}${docxCell(r[2],{width:1500,fill:"EAF7F4",bold:true,size:18})}${docxCell(r[3],{width:3200,size:18})}</w:tr>`).join("")}</w:tbl>`;
+}
+
+async function exportEvidenceWord(week) {
+  const data = evidenceDisplayData(week);
+  const doc = ensureEvidenceItemMetadata(week.id);
+  const groups = evidencePhotoGroups(week.id);
+  setStatus("جارٍ تجهيز Word مستقل للشواهد…");
+  const relationships = [`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`];
+  const mediaEntries = [];
+  let relCounter = 2, docPrCounter = 1;
+  let logoRelId = "", logoFit = null;
+  const logoDataUrl = state.report?.logoDataUrl || "";
+  const logoData = dataUrlToBytes(logoDataUrl);
+  if (logoData) {
+    logoRelId = `rId${relCounter++}`;
+    relationships.push(`<Relationship Id="${logoRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/report-logo.jpeg"/>`);
+    mediaEntries.push({ name:"word/media/report-logo.jpeg", data:logoData.bytes });
+    const dims=await imageSizeFromDataUrl(logoDataUrl); logoFit=fitImageEmu(dims.width,dims.height,.85,.72);
+  }
+  const imageInfo=[];
+  const photos=(evidenceCache[week.id]||[]).slice(0,MAX_EVIDENCE_PER_WEEK_V13);
+  for (let i=0;i<photos.length;i++) {
+    const imageData=dataUrlToBytes(photos[i].dataUrl); if(!imageData){imageInfo.push(null);continue;}
+    const relId=`rId${relCounter++}`; const fileName=`evidence-v13-w${week.id}-${i+1}.jpeg`;
+    relationships.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fileName}"/>`);
+    mediaEntries.push({name:`word/media/${fileName}`,data:imageData.bytes});
+    const dims=await imageSizeFromDataUrl(photos[i].dataUrl);
+    imageInfo.push({relId,dims,name:photos[i].name||`شاهد ${i+1}`});
+  }
+  const parts=[];
+  const nextLogo=()=>logoRelId&&logoFit?docxImageParagraphV6(logoRelId,docPrCounter++,"شعار التقرير",logoFit.cx,logoFit.cy):"";
+  for(let pageIndex=0;pageIndex<groups.length;pageIndex++){
+    const group = groups[pageIndex] || [];
+    if(pageIndex>0) parts.push(docxPageBreak());
+    parts.push(docxFormalHeader(nextLogo()));
+    parts.push(docxParagraph(`${week.title} — ${week.theme}`,{bold:true,size:20,center:true,spacingAfter:25}));
+    parts.push(docxParagraph(evidenceProgramTitle(data.programName),{bold:true,size:30,center:true,spacingAfter:80}));
+    parts.push(evidenceDocxMetaTable(data));
+    parts.push(docxParagraph("",{spacingAfter:50}));
+    const start=pageIndex*4;
+    const actualCount=group.length;
+    const makeEvidenceCell=(idx,{wide=false,tall=false}={})=>{
+      const info=imageInfo[idx]; const meta=doc.items[idx]||{description:"شاهد تنفيذ",type:"صورة تنفيذ",note:""};
+      let inner="";
+      if(info){
+        const maxW=wide?5.9:3.05; const maxH=tall?3.35:(wide?2.05:1.75);
+        const fit=fitImageEmu(info.dims.width,info.dims.height,maxW,maxH);
+        inner+=docxImageParagraphV6(info.relId,docPrCounter++,info.name,fit.cx,fit.cy);
+        inner+=docxParagraph(`الشاهد ${idx+1} — ${meta.description||"شاهد تنفيذ"}`,{bold:true,size:17,center:true,spacingAfter:20});
+        inner+=docxParagraph(`نوع الشاهد: ${meta.type||"صورة تنفيذ"}`,{size:16,center:true,spacingAfter:15});
+        if(meta.note) inner+=docxParagraph(meta.note,{size:15,center:true,spacingAfter:0});
+      } else inner=docxParagraph("مساحة شاهد",{size:16,center:true,spacingAfter:0});
+      return evidenceDocxRawCell(inner,{width:wide?9400:4700,fill:"FBFDFC",margin:65,gridSpan:wide?2:1});
+    };
+    let photoRows="";
+    if(actualCount===0){
+      photoRows=`<w:tr>${makeEvidenceCell(start)}${makeEvidenceCell(start+1)}</w:tr><w:tr>${makeEvidenceCell(start+2)}${makeEvidenceCell(start+3)}</w:tr>`;
+    } else if(actualCount===1){
+      photoRows=`<w:tr>${makeEvidenceCell(start,{wide:true,tall:true})}</w:tr>`;
+    } else if(actualCount===2){
+      photoRows=`<w:tr>${makeEvidenceCell(start,{tall:true})}${makeEvidenceCell(start+1,{tall:true})}</w:tr>`;
+    } else if(actualCount===3){
+      photoRows=`<w:tr>${makeEvidenceCell(start)}${makeEvidenceCell(start+1)}</w:tr><w:tr>${makeEvidenceCell(start+2,{wide:true})}</w:tr>`;
+    } else {
+      photoRows=`<w:tr>${makeEvidenceCell(start)}${makeEvidenceCell(start+1)}</w:tr><w:tr>${makeEvidenceCell(start+2)}${makeEvidenceCell(start+3)}</w:tr>`;
+    }
+    parts.push(`<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="DCE8E5"/><w:left w:val="single" w:sz="4" w:color="DCE8E5"/><w:bottom w:val="single" w:sz="4" w:color="DCE8E5"/><w:right w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideH w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideV w:val="single" w:sz="4" w:color="DCE8E5"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="4700"/><w:gridCol w:w="4700"/></w:tblGrid>${photoRows}</w:tbl>`);
+    if(pageIndex===groups.length-1){
+      const labels=evidenceGenderLabels(data.schoolType);
+      parts.push(docxParagraph("",{spacingAfter:55}));
+      parts.push(`<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="DCE8E5"/><w:left w:val="single" w:sz="4" w:color="DCE8E5"/><w:bottom w:val="single" w:sz="4" w:color="DCE8E5"/><w:right w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideH w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideV w:val="single" w:sz="4" w:color="DCE8E5"/></w:tblBorders></w:tblPr>${[["ملخص التنفيذ",data.summary],["أبرز مخرج موثّق",data.output],["ملاحظات",data.notes],[labels.signature,data.signature||data.executor],["التاريخ",data.footerDate]].map(([l,v])=>`<w:tr>${docxCell(l,{width:2200,fill:"EAF7F4",bold:true,size:17})}${docxCell(v||" ",{width:7200,size:17})}</w:tr>`).join("")}</w:tbl>`);
+    }
+    parts.push(docxParagraph("أ/ فاطمة هزازي — ملتقى التعليم التفاعلي",{bold:true,size:16,center:true,spacingAfter:0}));
+  }
+  const documentXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${parts.join("")}<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="500" w:right="560" w:bottom="500" w:left="560" w:header="280" w:footer="280" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="50" w:line="260" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length?'<Default Extension="jpeg" ContentType="image/jpeg"/>':""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+  const coreXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(evidenceProgramTitle(data.programName))}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
+  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>13.0</AppVersion></Properties>`;
+  const entries=[{name:"[Content_Types].xml",data:contentTypes},{name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},{name:"word/document.xml",data:documentXml},{name:"word/styles.xml",data:stylesXml},{name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`},{name:"docProps/core.xml",data:coreXml},{name:"docProps/app.xml",data:appXml},...mediaEntries];
+  const blob=makeZip(entries,"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v13.docx`);
+  setStatus("تم تجهيز Word مستقل للشواهد");
+}
+
+function loadCanvasImage(src) {
+  return new Promise((resolve,reject)=>{ const img=new Image(); img.onload=()=>resolve(img); img.onerror=()=>reject(new Error("تعذر تحميل الصورة")); img.src=src; });
+}
+function canvasRoundRect(ctx,x,y,w,h,r,fill,stroke){ctx.beginPath();ctx.roundRect(x,y,w,h,r);if(fill){ctx.fillStyle=fill;ctx.fill()}if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=3;ctx.stroke()}}
+function canvasWrapRtl(ctx,text,x,y,maxWidth,lineHeight,maxLines=3){const words=String(text||"").split(/\s+/).filter(Boolean);let line="",lines=[];for(const word of words){const test=line?`${line} ${word}`:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);lines=lines.slice(0,maxLines);lines.forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight));return y+lines.length*lineHeight}
+function drawContained(ctx,img,x,y,w,h){const s=Math.min(w/img.width,h/img.height);const dw=img.width*s,dh=img.height*s;ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh)}
+function canvasBlob(canvas,type="image/png",quality=1){return new Promise(resolve=>canvas.toBlob(resolve,type,quality))}
+
+async function buildEvidenceCanvasPage(week,pageIndex,pageCount,group){
+  await document.fonts?.ready?.catch?.(()=>{});
+  const data=evidenceDisplayData(week),doc=getEvidenceDoc(week.id),labels=evidenceGenderLabels(data.schoolType);
+  const canvas=document.createElement("canvas");canvas.width=2480;canvas.height=3508;const ctx=canvas.getContext("2d");ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.direction="rtl";ctx.textAlign="right";ctx.textBaseline="top";
+  ctx.fillStyle="#087f79";ctx.fillRect(0,0,canvas.width,28);ctx.fillStyle="#d8b66f";ctx.fillRect(0,370,canvas.width,12);
+  let logo=null;try{if(state.report?.logoDataUrl)logo=await loadCanvasImage(state.report.logoDataUrl)}catch{} if(logo){drawContained(ctx,logo,140,65,330,250)}else{canvasRoundRect(ctx,150,85,300,190,22,"#f8fbfa","#dce8e5");ctx.textAlign="center";ctx.fillStyle="#78908d";ctx.font="600 30px Tajawal, Arial";ctx.fillText("شعار الجهة",300,160)}
+  ctx.fillStyle="#173f3d";ctx.font="700 48px Tajawal, Arial";ctx.fillText("المملكة العربية السعودية",2290,70);ctx.font="700 45px Tajawal, Arial";ctx.fillText("وزارة التعليم",2290,130);ctx.font="400 35px Tajawal, Arial";ctx.fillText(state.admin?`إدارة التعليم: ${state.admin}`:"إدارة التعليم",2290,195);ctx.fillText(data.schoolName?`المدرسة: ${data.schoolName}`:"اسم المدرسة",2290,245);
+  ctx.textAlign="center";ctx.fillStyle="#087f79";ctx.font="700 34px Tajawal, Arial";ctx.fillText(`${week.title} • ${week.theme}`,1240,420);ctx.fillStyle="#075f5b";ctx.font="700 58px Tajawal, Arial";ctx.fillText(evidenceProgramTitle(data.programName),1240,472);
+  const meta=[`نوع المدرسة: ${data.schoolType||"—"}`,`مجال البرنامج: ${data.domain||"—"}`,`تاريخ التنفيذ: ${data.executionDate||"—"}`,`الفئة المستهدفة: ${data.targetGroup||"—"}`,`${labels.executor}: ${data.executor||"—"}`,`عدد الصور: ${(evidenceCache[week.id]||[]).length}`];
+  const mx=[2300,1590,880], my=[575,690]; ctx.textAlign="right";ctx.font="500 29px Tajawal, Arial";for(let r=0;r<2;r++)for(let c=0;c<3;c++){const i=r*3+c;canvasRoundRect(ctx,mx[c]-650,my[r],630,90,18,"#f6faf9","#dce8e5");ctx.fillStyle="#314b49";ctx.fillText(meta[i],mx[c]-25,my[r]+26)}
+  const startY=820,gapX=80,gapY=65,left=110;
+  const drawCanvasEvidenceCell=async(photo,idx,x,y,cellW,cellH)=>{
+    const metaItem=doc.items[idx]||{description:"شاهد تنفيذ",type:"صورة تنفيذ",note:""};canvasRoundRect(ctx,x,y,cellW,cellH,24,"#fbfdfc","#d6e5e2");
+    if(photo){let img=null;try{img=await loadCanvasImage(photo.dataUrl)}catch{};const photoH=Math.max(480,cellH-260);if(img)drawContained(ctx,img,x+35,y+35,cellW-70,photoH);ctx.textAlign="right";ctx.fillStyle="#075f5b";ctx.font="700 30px Tajawal, Arial";canvasWrapRtl(ctx,`الشاهد ${idx+1} — ${metaItem.description||"شاهد تنفيذ"}`,x+cellW-35,y+photoH+70,cellW-70,40,2);ctx.fillStyle="#465f5d";ctx.font="500 26px Tajawal, Arial";ctx.fillText(`نوع الشاهد: ${metaItem.type||"صورة تنفيذ"}`,x+cellW-35,y+photoH+160);if(metaItem.note){ctx.fillStyle="#687c7a";ctx.font="400 23px Tajawal, Arial";canvasWrapRtl(ctx,metaItem.note,x+cellW-35,y+photoH+205,cellW-70,32,2)}}else{ctx.textAlign="center";ctx.fillStyle="#a3b1b0";ctx.font="500 34px Tajawal, Arial";ctx.fillText("مساحة شاهد",x+cellW/2,y+cellH/2)}
+  };
+  if(group.length===1){await drawCanvasEvidenceCell(group[0],pageIndex*4,left,startY,2260,1740)}
+  else if(group.length===2){await drawCanvasEvidenceCell(group[0],pageIndex*4,left,startY,1090,1740);await drawCanvasEvidenceCell(group[1],pageIndex*4+1,left+1170,startY,1090,1740)}
+  else if(group.length===3){await drawCanvasEvidenceCell(group[0],pageIndex*4,left,startY,1090,820);await drawCanvasEvidenceCell(group[1],pageIndex*4+1,left+1170,startY,1090,820);await drawCanvasEvidenceCell(group[2],pageIndex*4+2,left,startY+885,2260,855)}
+  else {const source=group.length?group:[null,null,null,null];for(let slot=0;slot<4;slot++){const row=Math.floor(slot/2),col=slot%2;await drawCanvasEvidenceCell(source[slot]||null,pageIndex*4+slot,left+col*1170,startY+row*970,1090,905)}}
+  const isLast=pageIndex===pageCount-1;if(isLast){const y=2780;canvasRoundRect(ctx,110,y,2260,530,24,"#f8fbfa","#dce8e5");ctx.textAlign="right";ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("ملخص التنفيذ",2310,y+25);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.summary||"",2310,y+70,2150,34,3);ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("أبرز مخرج موثّق",2310,y+175);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.output||"",2310,y+220,2150,34,2);ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("ملاحظات",2310,y+300);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.notes||"",2310,y+345,2150,34,2);ctx.font="500 25px Tajawal, Arial";ctx.fillText(`${labels.signature}: ${data.signature||data.executor||""}`,2310,y+445);ctx.textAlign="left";ctx.fillText(`التاريخ: ${data.footerDate||""}`,170,y+445)}else{ctx.textAlign="center";ctx.fillStyle="#687c7a";ctx.font="500 26px Tajawal, Arial";ctx.fillText(`صفحة شواهد إضافية • ${pageIndex+1} من ${pageCount}`,1240,3290)}
+  ctx.textAlign="right";ctx.fillStyle="#087f79";ctx.font="700 22px Tajawal, Arial";ctx.fillText("أ/ فاطمة هزازي",2320,3435);ctx.textAlign="left";ctx.fillText("ملتقى التعليم التفاعلي",160,3435);return canvas;
+}
+
+async function exportEvidencePng(week){
+  const groups=evidencePhotoGroups(week.id);setStatus("جارٍ إنشاء صفحات PNG عالية الدقة…");
+  for(let i=0;i<groups.length;i++){const canvas=await buildEvidenceCanvasPage(week,i,groups.length,groups[i]);const blob=await canvasBlob(canvas,"image/png",1);if(blob)downloadBlob(blob,"image/png",`${safeFileBase(evidenceDisplayData(week).programName||week.title)}-شواهد-${i+1}-من-${groups.length}.png`)}
+  setStatus(`تم إنشاء ${groups.length} صفحة PNG عالية الدقة`);
+}

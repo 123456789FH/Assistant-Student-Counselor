@@ -1,0 +1,28 @@
+رفع الإصدار ١٣ إلى مستودع Assistant-Student-Counselor
+
+استبدلي/ارفعي في جذر المستودع:
+- index.html
+- app.js
+- styles.css
+- service-worker.js
+- manifest.webmanifest
+- forum-logo.png
+- icon-192.png
+- icon-512.png
+
+داخل assets/fonts/:
+- Tajawal-Regular.ttf
+- Tajawal-Bold.ttf
+- OFL-tajawal.txt
+
+ملفات توثيق اختيارية لا يحتاجها التطبيق للتشغيل:
+- README.txt
+- CHANGELOG-v13.txt
+- SECURITY-CHECK-v13.txt
+- TEST-REPORT-v13.txt
+
+مهم جدًا:
+1) استبدلي service-worker.js حتى ينتقل التطبيق المثبت من كاش v12 إلى v13.
+2) لا ترفعي node_modules.
+3) بيانات الإصدار ١٢ المحفوظة في المتصفح تظل متوافقة؛ تمت إضافة evidenceDocs دون تغيير storageKey.
+4) لإظهار شعار وزارة التعليم/الجهة في نموذج الشواهد، افتحي «إعدادات التقرير» داخل التطبيق وارفعِي الشعار الرسمي المعتمد.
