@@ -1334,3 +1334,24 @@ main { margin-top: 20px; }
 .footer--credits strong{color:#fff2cf}
 .footer--credits .footer-sep{opacity:.55}
 @media(max-width:700px){.footer--credits{font-size:.88rem}.footer--credits .footer-sep{display:none}.footer--credits>span{flex:1 1 100%;justify-content:center}}
+
+
+/* v17 — التنبيه الذكي وحالات الأسابيع وتثبيت PWA */
+.smart-reminder{margin:0 0 12px;padding:14px 16px;border:1px solid #d8e6e3;border-radius:18px;background:linear-gradient(135deg,#ffffff,#f7fbfa);box-shadow:0 10px 24px rgba(9,74,70,.07);display:grid;gap:10px}
+.smart-reminder__head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.smart-reminder__title{display:flex;align-items:center;gap:10px;font-weight:900;color:#153f3d}.smart-reminder__title small{display:block;font-size:.72rem;font-weight:600;color:var(--muted);margin-top:2px}
+.smart-reminder__lamp,.week-signal__lamp,.week-inline-lamp{width:14px;height:14px;border-radius:50%;display:inline-block;flex:none;border:2px solid rgba(0,0,0,.08);box-shadow:0 0 0 4px rgba(0,0,0,.03)}
+.is-red .smart-reminder__lamp,.week-signal.is-red .week-signal__lamp,.week-inline-lamp.is-red{background:#e53e3e;box-shadow:0 0 0 5px rgba(229,62,62,.12),0 0 16px rgba(229,62,62,.65)}
+.is-amber .smart-reminder__lamp,.week-signal.is-amber .week-signal__lamp,.week-inline-lamp.is-amber{background:#e8a317;box-shadow:0 0 0 5px rgba(232,163,23,.12),0 0 13px rgba(232,163,23,.48)}
+.is-green .smart-reminder__lamp,.week-signal.is-green .week-signal__lamp,.week-inline-lamp.is-green{background:#2d9b66;box-shadow:0 0 0 5px rgba(45,155,102,.12),0 0 12px rgba(45,155,102,.42)}
+.is-gray .smart-reminder__lamp,.week-signal.is-gray .week-signal__lamp,.week-inline-lamp.is-gray{background:#aab8b6;box-shadow:0 0 0 5px rgba(140,158,156,.1)}
+.smart-reminder.is-red{border-color:#f0c5c5;background:linear-gradient(135deg,#fff,#fff8f8)}.smart-reminder.is-amber{border-color:#edd9aa;background:linear-gradient(135deg,#fff,#fffaf0)}.smart-reminder.is-green{border-color:#bee2ce;background:linear-gradient(135deg,#fff,#f4fbf7)}
+.smart-reminder__message{font-size:.86rem;line-height:1.8;color:#3e5755}.smart-reminder__message strong{color:#0b625e}.smart-reminder__actions{display:flex;gap:7px;flex-wrap:wrap}.smart-reminder__actions .btn{font-size:.78rem;padding:8px 11px}
+.week-signal-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:7px;margin:0 0 16px}.week-signal{border:1px solid #dce7e5;border-radius:13px;padding:9px 6px;background:#fff;text-align:center;cursor:pointer;transition:.18s ease}.week-signal:hover{transform:translateY(-1px);box-shadow:0 7px 18px rgba(7,79,75,.08)}.week-signal strong{display:block;font-size:.7rem;color:#264b49;margin-top:5px}.week-signal small{display:block;font-size:.58rem;color:#718583;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.week-signal.is-current{outline:2px solid rgba(8,127,121,.26);outline-offset:2px}
+@keyframes v17LampPulse{0%,100%{transform:scale(1);filter:brightness(1)}50%{transform:scale(1.13);filter:brightness(1.13)}}.smart-reminder.is-red .smart-reminder__lamp,.week-signal.is-red.is-current .week-signal__lamp{animation:v17LampPulse 1.25s ease-in-out infinite}
+.week-focus-meta .week-status-with-lamp{display:inline-flex;align-items:center;gap:6px}.week-inline-lamp{width:10px;height:10px;border-width:1px;box-shadow:none!important}
+.btn--install{border-color:#b8dcd8!important;background:linear-gradient(180deg,#f8fffe,#eef9f7)!important;color:#075f5b!important}
+.install-help{width:min(92vw,520px);border:0;border-radius:22px;padding:0;box-shadow:0 25px 70px rgba(5,67,63,.24);color:#183c3a}.install-help::backdrop{background:rgba(9,36,34,.45);backdrop-filter:blur(3px)}.install-help .dialog-head{padding:18px 20px 10px}.install-help__body{padding:2px 20px 14px;display:grid;gap:12px}.install-help__card{padding:13px 14px;border:1px solid #dce8e5;border-radius:14px;background:#f8fbfa;line-height:1.8;font-size:.85rem}.install-help__steps{margin:0;padding-right:22px;line-height:2}.install-help__status{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:12px;background:#edf8f6;color:#075f5b;font-weight:800}.install-help .dialog-actions{padding:12px 20px 20px}
+@media(max-width:760px){.week-signal-strip{grid-template-columns:repeat(4,minmax(0,1fr))}.smart-reminder{padding:12px}.smart-reminder__head{align-items:flex-start}}
+@media(max-width:480px){.week-signal-strip{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(prefers-reduced-motion:reduce){.smart-reminder.is-red .smart-reminder__lamp,.week-signal.is-red.is-current .week-signal__lamp{animation:none}}

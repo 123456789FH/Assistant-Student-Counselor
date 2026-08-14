@@ -1,0 +1,15 @@
+ارفع/استبدل في جذر المستودع:
+index.html
+styles.css
+app.js
+manifest.webmanifest
+service-worker.js
+forum-logo.png
+icon-192.png
+icon-512.png
+
+وتأكد من بقاء:
+assets/fonts/Tajawal-Regular.ttf
+assets/fonts/Tajawal-Bold.ttf
+
+مهم: استبدل service-worker.js ثم حدّث الصفحة. على iPad إذا بقيت نسخة قديمة، أغلق تبويب التطبيق وافتحه مجددًا ثم أعد التحميل.

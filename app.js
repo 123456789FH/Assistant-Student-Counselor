@@ -425,6 +425,139 @@ function dailyPlanSummaryText(week) {
     .join(" • ");
 }
 
+/* v17 — خط زمني هجري وحالات ضوئية ذكية */
+function hijriDateKeyV17(parts) {
+  if (!parts || !Number.isFinite(parts.year) || !Number.isFinite(parts.month) || !Number.isFinite(parts.day)) return null;
+  return parts.year * 10000 + parts.month * 100 + parts.day;
+}
+
+function todayHijriPartsV17() {
+  try {
+    const formatter = new Intl.DateTimeFormat("en-u-ca-islamic-umalqura", { timeZone: "Asia/Riyadh", year: "numeric", month: "2-digit", day: "2-digit" });
+    const parts = Object.fromEntries(formatter.formatToParts(new Date()).filter((part) => ["year", "month", "day"].includes(part.type)).map((part) => [part.type, Number(part.value)]));
+    if (parts.year && parts.month && parts.day) return parts;
+  } catch {}
+  return null;
+}
+
+function weekChronologyV17(week) {
+  const today = hijriDateKeyV17(todayHijriPartsV17());
+  const start = hijriDateKeyV17(parseHijriLabel(week?.dates?.[0]));
+  const end = hijriDateKeyV17(parseHijriLabel(week?.dates?.[1]));
+  if (!today || !start || !end) return "unknown";
+  if (today < start) return "future";
+  if (today > end) return "past";
+  return "current";
+}
+
+function reportStatusV17(week) {
+  const started = programReportHasDataV15(week.id);
+  const readiness = started ? programReportReadinessValue(programReportDataV15(week)) : 0;
+  const review = started ? programReportReviewV15(week) : { errors: 0, warnings: 0 };
+  return { started, readiness, ready: started && readiness >= 80 && review.errors === 0, review };
+}
+
+function weekSignalV17(week) {
+  const chronology = weekChronologyV17(week);
+  const executed = Boolean(state.completed[completionKey(week.id)]);
+  const report = reportStatusV17(week);
+  if (executed && report.ready) return { tone: "green", label: "مكتمل وموثّق", chronology, executed, report };
+  if (executed) return { tone: "amber", label: "تم التنفيذ • التقرير يحتاج إكمالًا", chronology, executed, report };
+  if (chronology === "current" || chronology === "past") return { tone: "red", label: chronology === "past" ? "متأخر ويحتاج متابعة" : "عليه الدور الآن", chronology, executed, report };
+  return { tone: "gray", label: "قادم", chronology, executed, report };
+}
+
+function currentDayPlanV17(week) {
+  if (weekChronologyV17(week) !== "current") return null;
+  const start = parseHijriLabel(week?.dates?.[0]);
+  const today = todayHijriPartsV17();
+  if (!start || !today || start.year !== today.year || start.month !== today.month) return null;
+  const index = today.day - start.day;
+  if (index < 0 || index >= guidanceWeekdays.length) return null;
+  return { index, name: guidanceWeekdays[index], ...getDayPlan(week.id, index) };
+}
+
+function priorityReminderV17() {
+  const records = weeks.map((week) => ({ week, signal: weekSignalV17(week) }));
+  const current = records.find((item) => item.signal.chronology === "current");
+  const overdue = records.find((item) => item.signal.chronology === "past" && item.signal.tone !== "green");
+  const upcoming = records.find((item) => item.signal.chronology === "future");
+  const item = current || overdue || upcoming || records.find((item) => item.signal.tone !== "green") || records[records.length - 1];
+  if (!item) return null;
+  const { week, signal } = item;
+  let message = "";
+  if (signal.chronology === "current" && !signal.executed) {
+    const todayPlan = currentDayPlanV17(week);
+    if (todayPlan?.done) message = `مهمة ${todayPlan.name} منفذة ✓. تابعي بقية ${week.title}، ثم اكتبي تقرير التنفيذ والشواهد قبل إغلاق الأسبوع.`;
+    else if (todayPlan && dayPlanHasContent(todayPlan)) message = `مهمة اليوم (${todayPlan.name}): ${todayPlan.activity || "الخطة اليومية"}. بعد التنفيذ حدّثي الحالة، ثم أكملي التقرير والشواهد.`;
+    else if (todayPlan) message = `الآن دور ${week.title}. لم تُكتب خطة ${todayPlan.name} بعد؛ أضيفي مهمة اليوم ثم حدّثي حالة التنفيذ.`;
+    else message = `الآن دور ${week.title}. تابعي مهامه اليومية، وبعد التنفيذ أكملي تقرير البرنامج والشواهد.`;
+  } else if (signal.chronology === "past" && !signal.executed) {
+    message = `انتهت فترة ${week.title} وما زالت حالة التنفيذ غير مكتملة. راجعي المهام وسجلي ما تم فعليًا دون إنشاء بيانات غير موجودة.`;
+  } else if (signal.executed && !signal.report.ready) {
+    message = `تم تنفيذ ${week.title}، لكن تقرير التنفيذ ما زال يحتاج إكمالًا (${arNum(signal.report.readiness)}٪). أكملي التقرير والتوثيق ليصبح المؤشر أخضر.`;
+  } else if (signal.chronology === "future") {
+    message = `${week.title} هو الأسبوع القادم في الخطة (${week.dates[0]} – ${week.dates[1]}). يمكنك تجهيز مهامه مسبقًا، وسيضيء بالأحمر عند حلول دوره إذا لم يكتمل.`;
+  } else {
+    message = `${week.title} مكتمل وموثّق. المؤشر الأخضر يعني أن التنفيذ والتقرير تجاوزا حد الجاهزية المعتمد داخل التطبيق.`;
+  }
+  return { week, signal, message };
+}
+
+function renderSmartReminderV17({ announce = false } = {}) {
+  const host = document.querySelector("#smartReminder");
+  const strip = document.querySelector("#weekSignalStrip");
+  if (!host || !strip) return;
+  const reminder = priorityReminderV17();
+  if (!reminder) return;
+  const { week, signal, message } = reminder;
+  host.className = `smart-reminder is-${signal.tone}`;
+  host.innerHTML = `<div class="smart-reminder__head"><div class="smart-reminder__title"><span class="smart-reminder__lamp" aria-hidden="true"></span><div>التنبيه الذكي الآن<small>${escapeHtml(week.title)} • ${escapeHtml(signal.label)}</small></div></div><span class="readiness-chip">${escapeHtml(week.dates[0])} – ${escapeHtml(week.dates[1])}</span></div><div class="smart-reminder__message">${escapeHtml(message)}</div><div class="smart-reminder__actions"><button class="btn btn--soft" type="button" data-v17-open-week="${week.id}">📅 فتح الأسبوع</button>${signal.executed && !signal.report.ready ? `<button class="btn btn--report-form" type="button" data-v17-open-report="${week.id}">🧾 إكمال التقرير</button>` : ""}</div>`;
+  strip.innerHTML = weeks.map((item) => {
+    const stateItem = weekSignalV17(item);
+    const isCurrent = stateItem.chronology === "current" || item.id === week.id;
+    return `<button class="week-signal is-${stateItem.tone} ${isCurrent ? "is-current" : ""}" type="button" data-v17-open-week="${item.id}" title="${escapeHtml(stateItem.label)}"><span class="week-signal__lamp" aria-hidden="true"></span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(stateItem.label)}</small></button>`;
+  }).join("");
+  refreshWeekSelectorLabelsV17();
+  if (announce) {
+    let shouldAnnounce = true;
+    try {
+      shouldAnnounce = !sessionStorage.getItem("v17-reminder-announced");
+      if (shouldAnnounce) sessionStorage.setItem("v17-reminder-announced", "1");
+    } catch {}
+    if (shouldAnnounce && (signal.tone === "red" || signal.tone === "amber")) toast(message);
+  }
+}
+
+function refreshWeekSelectorLabelsV17() {
+  const selector = document.querySelector("#weekSelector");
+  if (!selector) return;
+  [...selector.options].forEach((option) => {
+    const week = weeks.find((item) => item.id === Number(option.value));
+    if (!week) return;
+    const signal = weekSignalV17(week);
+    const lamp = signal.tone === "red" ? "🔴" : signal.tone === "amber" ? "🟡" : signal.tone === "green" ? "🟢" : "⚪";
+    option.textContent = `${lamp} ${week.title} — ${week.theme} — ${week.dates[0]} إلى ${week.dates[1]}`;
+  });
+}
+
+function wireSmartReminderV17() {
+  document.addEventListener("click", (event) => {
+    const weekButton = event.target.closest("[data-v17-open-week]");
+    if (weekButton) {
+      const id = Number(weekButton.dataset.v17OpenWeek);
+      if (weeks.some((week) => week.id === id)) setActiveWeek(id);
+    }
+    const reportButton = event.target.closest("[data-v17-open-report]");
+    if (reportButton) {
+      const week = weeks.find((item) => item.id === Number(reportButton.dataset.v17OpenReport));
+      if (week) openProgramReportFromWeekV15(week);
+    }
+  });
+  renderSmartReminderV17({ announce: true });
+  window.setInterval(() => renderSmartReminderV17(), 60000);
+}
+
 
 function downloadBlob(content, mime, filename) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
@@ -1292,7 +1425,7 @@ function renderWeekWorkspace() {
   head.className = "week-focus-head";
   const copy = document.createElement("div");
   copy.className = "week-focus-copy";
-  copy.innerHTML = `<span class="week-focus-kicker">✦ مساحة أسبوعية مستقلة</span><h3>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h3><p>${escapeHtml(week.dates[0])} إلى ${escapeHtml(week.dates[1])}</p><div class="week-focus-meta"><span>💎 ${escapeHtml(week.value)}</span><span data-week-status="${week.id}">${state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ"}</span><span data-daily-progress-week="${week.id}"></span><span class="readiness-chip">✦ <b data-readiness-week="${week.id}">${arNum(getWeekReadiness(week))}٪ — ${readinessLabel(getWeekReadiness(week))}</b></span></div>`;
+  copy.innerHTML = `<span class="week-focus-kicker">✦ مساحة أسبوعية مستقلة</span><h3>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h3><p>${escapeHtml(week.dates[0])} إلى ${escapeHtml(week.dates[1])}</p><div class="week-focus-meta"><span>💎 ${escapeHtml(week.value)}</span><span class="week-status-with-lamp"><i class="week-inline-lamp is-${weekSignalV17(week).tone}" aria-hidden="true"></i><b>${escapeHtml(weekSignalV17(week).label)}</b></span><span data-week-status="${week.id}">${state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ"}</span><span data-daily-progress-week="${week.id}"></span><span class="readiness-chip">✦ <b data-readiness-week="${week.id}">${arNum(getWeekReadiness(week))}٪ — ${readinessLabel(getWeekReadiness(week))}</b></span></div>`;
   const orb = document.createElement("div");
   orb.className = "week-number-orb";
   orb.textContent = arNum(week.id);
@@ -1450,6 +1583,7 @@ function refreshDynamicUI() {
   syncWeekNavigatorUI();
   renderDashboard();
   renderProgramCenterV15();
+  renderSmartReminderV17();
 }
 
 function renderAll() {
@@ -1612,7 +1746,7 @@ function selectedIdeasForWeek(week) {
 
 function reportCss() {
   return `
-    @page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#173638;margin:0;background:#fff;line-height:1.75}.report-header{display:grid;grid-template-columns:88px 1fr;gap:16px;align-items:center;padding:20px;border-radius:18px;background:linear-gradient(120deg,#14958f,#056862);color:#fff;margin-bottom:16px}.report-header img{width:78px;height:78px;object-fit:contain;border-radius:16px;background:#fff;padding:6px}.report-header h1{margin:0 0 5px;font-size:22px}.report-header p{margin:2px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:13px 0}.meta div,.box{border:1px solid #d9e7e4;border-radius:12px;padding:11px;background:#fbfefd}.box{margin:11px 0;break-inside:avoid}.box h2{font-size:16px;color:#086b67;margin:0 0 9px}.data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.data-item{padding:9px 10px;border-radius:9px;background:#f3f9f7;border:1px solid #e0ece9}.data-item.wide{grid-column:1/-1}ul{margin:0;padding-right:22px;line-height:1.9}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{text-align:center;padding:11px;border-radius:10px;background:#eff8f6}.metric b{display:block;font-size:19px;color:#065c58}.photo-box{break-inside:auto}.photo-edit-hint{margin:0 0 10px;color:#607675;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}.photos[data-photo-count="1"]{grid-template-columns:1fr}.report-photo{--photo-height:260px;margin:0;position:relative;min-width:0;padding:8px;border:1px solid #d9e8e5;border-radius:12px;background:#f8fbfa;break-inside:avoid;page-break-inside:avoid}.report-photo.is-wide{grid-column:1/-1}.report-photo img{display:block;width:100%;height:var(--photo-height);max-height:360px;object-fit:contain;object-position:center;border-radius:9px;background:#fff;border:1px solid #e0eae8}.report-photo figcaption{text-align:center;color:#667b79;font-size:11px;padding-top:5px}.report-photo.is-selected{outline:3px solid #15958e;outline-offset:2px}.report-photo.is-cover img{object-fit:cover}.pdf-toolbar{position:sticky;top:0;z-index:999;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 14px;padding:10px;border:1px solid #cee2df;border-radius:14px;background:rgba(255,255,255,.97);box-shadow:0 10px 30px rgba(4,79,75,.14)}.pdf-toolbar button{border:1px solid #cfe1de;border-radius:10px;padding:8px 10px;background:#fff;color:#075f5b;font-weight:700;cursor:pointer}.pdf-toolbar button.primary{background:#0b8f88;color:#fff;border-color:#0b8f88}.pdf-toolbar .pdf-tip{flex:1 1 100%;font-size:11px;color:#607675}.pdf-toolbar button:disabled{opacity:.45;cursor:not-allowed}.pdf-preview-note{padding:8px 10px;border-radius:10px;background:#edf8f6;color:#386462;font-size:12px;margin-bottom:10px}.week-summary{break-inside:avoid;border:1px solid #dbe6e3;border-radius:13px;padding:13px;margin:11px 0}.week-summary h2{margin:0 0 8px;color:#086b67}.status{display:inline-block;padding:5px 9px;border-radius:999px;background:#eaf7f4;color:#065c58;font-weight:bold}.disclaimer{padding:9px 11px;border-radius:10px;background:#fff8e8;border:1px solid #ead9ad;color:#6b5727;font-size:12px}.muted{color:#6a7d7d}footer{text-align:center;margin-top:20px;padding-top:11px;border-top:1px solid #dfe8e6;font-weight:bold;color:#086b67}@media(max-width:600px){.meta,.data-grid{grid-template-columns:1fr}.report-header{grid-template-columns:65px 1fr}.report-header img{width:58px;height:58px}}@media print{.no-print,.pdf-toolbar,.pdf-preview-note{display:none!important}.photo-box{break-inside:auto}.report-photo{break-inside:avoid;page-break-inside:avoid}.report-photo img{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
+    @page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Tahoma,Arial,sans-serif;direction:rtl;color:#173638;margin:0;background:#fff;line-height:1.75}.report-header{display:grid;grid-template-columns:88px 1fr;gap:16px;align-items:center;padding:20px;border-radius:18px;background:linear-gradient(120deg,#14958f,#056862);color:#fff;margin-bottom:16px}.report-header img{width:78px;height:78px;object-fit:contain;border-radius:16px;background:#fff;padding:6px}.report-header h1{margin:0 0 5px;font-size:22px}.report-header p{margin:2px 0}.meta{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:13px 0}.meta div,.box{border:1px solid #d9e7e4;border-radius:12px;padding:11px;background:#fbfefd}.box{margin:11px 0;break-inside:avoid}.box h2{font-size:16px;color:#086b67;margin:0 0 9px}.data-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.data-item{padding:9px 10px;border-radius:9px;background:#f3f9f7;border:1px solid #e0ece9}.data-item.wide{grid-column:1/-1}ul{margin:0;padding-right:22px;line-height:1.9}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.metric{text-align:center;padding:11px;border-radius:10px;background:#eff8f6}.metric b{display:block;font-size:19px;color:#065c58}.photo-box{break-inside:auto}.photo-edit-hint{margin:0 0 10px;color:#607675;font-size:12px}.photos{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;align-items:start}.photos[data-photo-count="1"]{grid-template-columns:1fr}.report-photo{--photo-height:260px;margin:0;position:relative;min-width:0;padding:8px;border:1px solid #d9e8e5;border-radius:12px;background:#f8fbfa;break-inside:avoid;page-break-inside:avoid}.report-photo.is-wide{grid-column:1/-1}.report-photo img{display:block;width:100%;height:var(--photo-height);max-height:360px;object-fit:contain;object-position:center;border-radius:9px;background:#fff;border:1px solid #e0eae8}.report-photo figcaption{text-align:center;color:#667b79;font-size:11px;padding-top:5px}.report-photo.is-selected{outline:3px solid #15958e;outline-offset:2px}.report-photo.is-cover img{object-fit:cover}.pdf-toolbar{position:sticky;top:0;z-index:999;display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 0 14px;padding:10px;border:1px solid #cee2df;border-radius:14px;background:rgba(255,255,255,.97);box-shadow:0 10px 30px rgba(4,79,75,.14)}.pdf-toolbar button{border:1px solid #cfe1de;border-radius:10px;padding:8px 10px;background:#fff;color:#075f5b;font-weight:700;cursor:pointer}.pdf-toolbar button.primary{background:#0b8f88;color:#fff;border-color:#0b8f88}.pdf-toolbar .pdf-tip{flex:1 1 100%;font-size:11px;color:#607675}.pdf-toolbar button:disabled{opacity:.45;cursor:not-allowed}.pdf-preview-note{padding:8px 10px;border-radius:10px;background:#edf8f6;color:#386462;font-size:12px;margin-bottom:10px}.week-summary{break-inside:avoid;border:1px solid #dbe6e3;border-radius:13px;padding:13px;margin:11px 0}.week-summary h2{margin:0 0 8px;color:#086b67}.status{display:inline-block;padding:5px 9px;border-radius:999px;background:#eaf7f4;color:#065c58;font-weight:bold}.disclaimer{padding:9px 11px;border-radius:10px;background:#fff8e8;border:1px solid #ead9ad;color:#6b5727;font-size:12px}.muted{color:#6a7d7d}.final-dashboard{border:1px solid #d7e6e3;border-radius:16px;padding:14px;margin:14px 0 18px;background:#fbfefd;break-inside:avoid}.final-dashboard__head{display:flex;justify-content:space-between;gap:14px;align-items:center;margin-bottom:12px}.final-dashboard__head span{font-size:11px;color:#087f79;font-weight:bold}.final-dashboard__head h2{margin:2px 0 0;font-size:19px;color:#075f5b}.final-dashboard__score{--score:0deg;width:82px;height:82px;border-radius:50%;display:grid;place-content:center;text-align:center;background:conic-gradient(#15958e var(--score),#e5efed 0);position:relative;flex:none}.final-dashboard__score:before{content:"";position:absolute;inset:9px;border-radius:50%;background:#fff}.final-dashboard__score b,.final-dashboard__score small{position:relative;z-index:1}.final-dashboard__score b{font-size:18px;color:#075f5b}.final-dashboard__score small{font-size:9px;color:#687d7b}.final-kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.final-kpis>div{border:1px solid #dce9e6;border-radius:10px;padding:9px;background:#fff}.final-kpis span{display:block;font-size:10px;color:#6a7d7d}.final-kpis b{display:block;font-size:15px;color:#075f5b;margin-top:2px}.final-bars{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}.final-bars>div{padding:8px;border-radius:10px;background:#f2f8f7}.final-bars span{display:flex;justify-content:space-between;font-size:10px}.final-bars em{font-style:normal;color:#087f79}.final-bars i{display:block;height:7px;background:#dfeae8;border-radius:999px;overflow:hidden;margin-top:6px}.final-bars u{display:block;height:100%;background:linear-gradient(90deg,#15958e,#42ad77);text-decoration:none}.final-week-timeline{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-top:11px}.final-week-node{text-align:center;border:1px solid #e0e9e7;border-radius:9px;padding:7px 3px;background:#fff}.final-week-node>span{display:block;width:10px;height:10px;border-radius:50%;margin:0 auto 4px;background:#adbab8}.final-week-node.done>span{background:#2d9b66}.final-week-node.partial>span{background:#e8a317}.final-week-node.due>span{background:#e53e3e}.final-week-node strong{display:block;font-size:9px;color:#294a48}.final-week-node small{display:block;font-size:7px;color:#728482;line-height:1.35}.final-dashboard__note{font-size:9px;color:#6c7d7b;margin:10px 0 0}footer{text-align:center;margin-top:20px;padding-top:11px;border-top:1px solid #dfe8e6;font-weight:bold;color:#086b67}@media(max-width:600px){.meta,.data-grid{grid-template-columns:1fr}.report-header{grid-template-columns:65px 1fr}.report-header img{width:58px;height:58px}}@media print{.no-print,.pdf-toolbar,.pdf-preview-note{display:none!important}.photo-box{break-inside:auto}.report-photo{break-inside:avoid;page-break-inside:avoid}.report-photo img{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}`;
 }
 
 function displayValue(value) {
@@ -1863,6 +1997,39 @@ async function printWeekReport(week) {
   toast('فتحت معاينة PDF؛ أصبحت أدوات تعديل الصور مفعّلة');
 }
 
+function finalDashboardDataV17() {
+  const records = weeks.map(programCenterRecordV15);
+  const startedPlans = records.filter((record) => record.planStarted).length;
+  const completed = records.filter((record) => record.completed).length;
+  const reportStarted = records.filter((record) => record.reportStarted).length;
+  const reportReady = records.filter((record) => record.reportStarted && programReportReadinessValue(programReportDataV15(record.week)) >= 80 && programReportReviewV15(record.week).errors === 0).length;
+  const beneficiaryValues = records.map((record) => record.beneficiaries).filter((value) => value != null);
+  const beneficiaries = beneficiaryValues.reduce((sum, value) => sum + value, 0);
+  const evidenceWeeks = records.filter((record) => record.evidenceStarted || String(record.report.evidenceAvailable || "").trim()).length;
+  const achievementValues = weeks.map((week) => getIndicator(week.id).achievement).filter((value) => value !== "" && Number.isFinite(Number(value))).map(Number);
+  const avgAchievement = achievementValues.length ? Math.round(achievementValues.reduce((sum, value) => sum + value, 0) / achievementValues.length) : null;
+  const domainCounts = {};
+  records.forEach((record) => { const domain = String(record.domain || "").trim(); if (domain) domainCounts[domain] = (domainCounts[domain] || 0) + 1; });
+  const topDomain = Object.entries(domainCounts).sort((a,b) => b[1]-a[1])[0] || null;
+  return { startedPlans, completed, reportStarted, reportReady, beneficiaries, beneficiaryCount: beneficiaryValues.length, evidenceWeeks, avgAchievement, topDomain, records };
+}
+
+function buildFinalDashboardHtmlV17() {
+  const data = finalDashboardDataV17();
+  const completionPct = Math.round((data.completed / Math.max(1, weeks.length)) * 100);
+  const reportPct = Math.round((data.reportReady / Math.max(1, weeks.length)) * 100);
+  const evidencePct = Math.round((data.evidenceWeeks / Math.max(1, weeks.length)) * 100);
+  const impactText = data.avgAchievement == null ? "—" : `${arNum(data.avgAchievement)}٪`;
+  const beneficiaryText = data.beneficiaryCount ? arNum(data.beneficiaries) : "—";
+  const topDomainText = data.topDomain ? `${escapeHtml(data.topDomain[0])} (${arNum(data.topDomain[1])})` : "—";
+  const timeline = data.records.map((record) => {
+    const signal = weekSignalV17(record.week);
+    const cls = signal.tone === "green" ? "done" : signal.tone === "amber" ? "partial" : signal.tone === "red" ? "due" : "future";
+    return `<div class="final-week-node ${cls}"><span></span><strong>${escapeHtml(record.week.title)}</strong><small>${escapeHtml(signal.label)}</small></div>`;
+  }).join("");
+  return `<section class="final-dashboard"><div class="final-dashboard__head"><div><span>لوحة مؤشرات تنفيذية</span><h2>ملخص الأداء والتوثيق</h2></div><div class="final-dashboard__score" style="--score:${completionPct * 3.6}deg"><b>${arNum(completionPct)}٪</b><small>نسبة التنفيذ</small></div></div><div class="final-kpis"><div><span>الأسابيع المنفذة</span><b>${arNum(data.completed)} / ${arNum(weeks.length)}</b></div><div><span>التقارير الجاهزة</span><b>${arNum(data.reportReady)}</b></div><div><span>أسابيع موثقة</span><b>${arNum(data.evidenceWeeks)}</b></div><div><span>إجمالي المستفيدين</span><b>${beneficiaryText}</b></div><div><span>متوسط تحقق الهدف</span><b>${impactText}</b></div><div><span>أكثر المجالات تنفيذًا</span><b>${topDomainText}</b></div></div><div class="final-bars"><div><span><b>تنفيذ الأسابيع</b><em>${arNum(completionPct)}٪</em></span><i><u style="width:${completionPct}%"></u></i></div><div><span><b>جاهزية التقارير</b><em>${arNum(reportPct)}٪</em></span><i><u style="width:${reportPct}%"></u></i></div><div><span><b>التوثيق</b><em>${arNum(evidencePct)}٪</em></span><i><u style="width:${evidencePct}%"></u></i></div></div><div class="final-week-timeline">${timeline}</div><p class="final-dashboard__note">تعتمد المؤشرات على البيانات المدخلة فعليًا في التطبيق فقط؛ القيم غير المتوفرة تظهر بشرطة ولا تُقدّر تلقائيًا.</p></section>`;
+}
+
 function buildFinalReportHtml({ autoPrint = false, includePhotos = false } = {}) {
   captureIdentity();
   const completedCount = weeks.filter((week) => Boolean(state.completed[completionKey(week.id)])).length;
@@ -1871,6 +2038,7 @@ function buildFinalReportHtml({ autoPrint = false, includePhotos = false } = {})
   return `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>التقرير الختامي للخطة</title><style>${reportCss()}</style></head><body>
     ${reportHeaderHtml("التقرير الختامي — «أثري يبدأ مني»", "تقرير منظم للتخطيط والتنفيذ وقياس الأثر")}
     ${reportIdentityMeta(`<div><b>الأسابيع المنفذة:</b> ${arNum(completedCount)} من ٧</div><div><b>صور التوثيق المؤقتة الحالية:</b> ${arNum(totalEvidence)}</div>`)}
+    ${buildFinalDashboardHtmlV17()}
     ${sections}
     <footer>فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات</footer>
     ${autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),250)<\\/script>' : ""}
@@ -2408,24 +2576,83 @@ function wireIdentity() {
   // بيانات الإدارة والمدرسة تُدار من نافذة إعدادات التقرير فقط.
 }
 
+function isStandaloneV17() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+
+function isAppleMobileV17() {
+  const ua = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function showInstallHelpV17(mode = "generic") {
+  const dialog = document.querySelector("#installHelpDialog");
+  const body = document.querySelector("#installHelpBody");
+  if (!dialog || !body) return;
+  if (isStandaloneV17()) {
+    body.innerHTML = '<div class="install-help__status">✅ التطبيق مثبت ويعمل حاليًا كوضع تطبيق مستقل.</div>';
+  } else if (mode === "ios" || isAppleMobileV17()) {
+    body.innerHTML = `<div class="install-help__status">📱 التثبيت على iPhone / iPad يتم من Safari</div><div class="install-help__card"><ol class="install-help__steps"><li>افتحي التطبيق في <b>Safari</b>.</li><li>اضغطي زر <b>المشاركة</b> في شريط Safari.</li><li>اختاري <b>إضافة إلى الشاشة الرئيسية</b>.</li><li>فعّلي <b>فتح كتطبيق ويب</b> إن ظهر الخيار، ثم اضغطي <b>إضافة</b>.</li></ol></div><small>بعد الإضافة سيظهر رمز «مساعد الموجّه» على الشاشة الرئيسية، ويعمل بواجهة مستقلة.</small>`;
+  } else {
+    body.innerHTML = `<div class="install-help__status">💻 لم يرسل المتصفح نافذة التثبيت المباشر حاليًا.</div><div class="install-help__card">استخدمي خيار <b>تثبيت التطبيق / Install app</b> أو <b>إضافة إلى الشاشة الرئيسية</b> من قائمة المتصفح. إذا ظهر زر التثبيت المباشر لاحقًا فسيستخدمه التطبيق تلقائيًا.</div>`;
+  }
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+}
+
+function syncInstallButtonV17() {
+  const button = document.querySelector("#installBtn");
+  if (!button) return;
+  if (isStandaloneV17()) {
+    button.hidden = true;
+    return;
+  }
+  button.hidden = false;
+  button.textContent = deferredPrompt ? "📲 تثبيت التطبيق الآن" : isAppleMobileV17() ? "📲 تثبيت التطبيق على الجهاز" : "📲 تثبيت التطبيق";
+}
+
 function wirePWA() {
+  const closeDialog = () => document.querySelector("#installHelpDialog")?.close?.();
+  document.querySelector("#closeInstallHelpBtn")?.addEventListener("click", closeDialog);
+  document.querySelector("#installHelpDoneBtn")?.addEventListener("click", closeDialog);
+
   window.addEventListener("beforeinstallprompt", (event) => {
     event.preventDefault();
     deferredPrompt = event;
-    const button = document.querySelector("#installBtn");
-    if (button) button.hidden = false;
+    syncInstallButtonV17();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredPrompt = null;
+    syncInstallButtonV17();
+    toast("تم تثبيت التطبيق على الجهاز ✓");
   });
 
   document.querySelector("#installBtn")?.addEventListener("click", async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice;
-    deferredPrompt = null;
-    document.querySelector("#installBtn").hidden = true;
+    if (isStandaloneV17()) {
+      showInstallHelpV17();
+      return;
+    }
+    if (deferredPrompt) {
+      try {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice?.outcome === "accepted") toast("تم قبول تثبيت التطبيق");
+      } catch (error) {
+        console.error("تعذر فتح نافذة تثبيت PWA", error);
+        showInstallHelpV17();
+      } finally {
+        deferredPrompt = null;
+        syncInstallButtonV17();
+      }
+      return;
+    }
+    showInstallHelpV17(isAppleMobileV17() ? "ios" : "generic");
   });
 
+  syncInstallButtonV17();
+
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").catch(() => {}));
+    window.addEventListener("load", () => navigator.serviceWorker.register("./service-worker.js").then(() => syncInstallButtonV17()).catch((error) => console.error("تعذر تسجيل Service Worker", error)));
   }
 }
 
@@ -2438,6 +2665,7 @@ function init() {
   wireEvidenceStudio();
   wireProgramReportStudio();
   wireProgramCenterV15();
+  wireSmartReminderV17();
   renderAll();
   loadEvidence();
   syncEvidenceStudio();
@@ -2709,7 +2937,7 @@ ${reportParts.join("")}
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v16.docx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v17.docx`);
   setStatus("تم تجهيز Word الاحترافي");
   toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
@@ -3031,7 +3259,7 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v16.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v17.xlsx`);
   toast(selectedWeeks.length === 1
     ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
     : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
@@ -3483,7 +3711,7 @@ async function exportEvidenceWord(week) {
   const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>16.0</AppVersion></Properties>`;
   const entries=[{name:"[Content_Types].xml",data:contentTypes},{name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},{name:"word/document.xml",data:documentXml},{name:"word/styles.xml",data:stylesXml},{name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`},{name:"docProps/core.xml",data:coreXml},{name:"docProps/app.xml",data:appXml},...mediaEntries];
   const blob=makeZip(entries,"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v16.docx`);
+  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v17.docx`);
   setStatus("تم تجهيز Word مستقل للشواهد");
 }
 
@@ -3545,7 +3773,7 @@ async function exportEvidencePdf(week){
       await new Promise(resolve=>setTimeout(resolve,0));
     }
     const pdf=buildImagePdf(pages);
-    downloadBlob(pdf,"application/pdf",`${title}-شواهد-v16.pdf`);
+    downloadBlob(pdf,"application/pdf",`${title}-شواهد-v17.pdf`);
     setStatus(`تم إنشاء PDF مباشر — ${arNum(groups.length)} صفحة A4`);
     toast("تم إنشاء PDF مباشر دون نافذة منبثقة");
   }catch(error){
@@ -4048,13 +4276,13 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   ];
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const kind = fillable ? "قالب-قابل-للتعبئة" : "تقرير-مكتمل";
-  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v16.docx`);
+  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v17.docx`);
   setStatus(fillable ? "تم تجهيز قالب Word القابل للتعبئة" : "تم تجهيز تقرير Word بالبيانات الحالية");
   toast(fillable ? "تم إنشاء DOCX حقيقي بحقـول تعبئة وقوائم Word منسدلة" : "تم إنشاء تقرير DOCX حقيقي بالبيانات الحالية");
 }
 
 /* ============================================================
-   v16 — ربط الخطة بالتقرير والشواهد + مراجع ذكي + مركز البرامج
+   v17 — تنبيهات ذكية + حالات ضوئية + Dashboard نهائي + تثبيت PWA
    ============================================================ */
 
 const programCenterFiltersV15 = { search: "", domain: "", status: "" };
