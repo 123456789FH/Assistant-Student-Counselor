@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#087f79" />
+  <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
+  <meta name="referrer" content="no-referrer" />
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١١</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <header class="hero" aria-label="رأس الخطة">
+      <div class="hero__pattern" aria-hidden="true"></div>
+
+      <div class="hero-logo" aria-label="شعار ملتقى التعليم التفاعلي">
+        <img id="headerLogo" src="forum-logo.png" alt="شعار ملتقى التعليم التفاعلي" />
+      </div>
+
+      <div class="brand">
+        <div>
+          <p>المملكة العربية السعودية</p>
+          <h1>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</h1>
+          <p class="hero__subtitle">قيمة أعيشها • سلوك أمارسه • أثر أتركه</p>
+        </div>
+      </div>
+    </header>
+
+    <section class="toolbar" aria-label="أدوات الخطة">
+      <div class="toolbar__group">
+        <button class="btn btn--primary" id="saveBtn" type="button">💾 حفظ البيانات</button>
+        <button class="btn" id="printBtn" type="button">🖨️ طباعة الخطة / PDF</button>
+        <button class="btn" id="printFinalReportBtn" type="button">📄 التقرير الختامي</button>
+        <button class="btn btn--soft" id="reportSettingsBtn" type="button">⚙️ إعدادات التقرير</button>
+
+        <details class="export-menu" id="exportMenu">
+          <summary class="btn">📤 تصدير / استيراد</summary>
+          <div class="export-menu__panel">
+            <button type="button" id="exportJsonBtn">JSON ⬇️</button>
+            <button type="button" id="importJsonBtn">JSON ⬆️ استيراد</button>
+            <button type="button" id="exportExcelBtn">Excel احترافي (.xlsx) — المعبأة فقط</button>
+            <button type="button" id="exportWordBtn">Word (.docx) — المعبأة فقط</button>
+            <small>Word وExcel يصدّران الأسابيع المعبأة فقط ويضمّنان صور الشواهد الموجودة في الجلسة الحالية. Excel مهيأ RTL والطباعة A4 وصفحة واحدة قدر الإمكان. JSON لا يتضمن الصور.</small>
+          </div>
+        </details>
+
+        <a class="btn btn--noor" href="https://noor.moe.gov.sa/" target="_blank" rel="noopener noreferrer">↗ فتح نظام نور الرسمي</a>
+        <button class="btn" id="installBtn" type="button" hidden>📲 تثبيت التطبيق</button>
+      </div>
+      <div class="toolbar__group">
+        <button class="btn btn--soft" id="expandAllBtn" type="button">⌄ فتح جميع الأفكار</button>
+        <button class="btn btn--danger" id="resetBtn" type="button">🗑 مسح جميع البيانات</button>
+      </div>
+      <div class="save-status" id="saveStatus" role="status" aria-live="polite">جاهز</div>
+      <input id="jsonImportInput" class="visually-hidden" type="file" accept=".json,application/json" />
+    </section>
+
+    <main>
+      <section class="overview-card">
+        <div>
+          <span class="eyebrow">هوية الخطة</span>
+          <h2>«أثري يبدأ مني»</h2>
+          <p>كل أسبوع يفتح في مساحة مستقلة وواضحة تضم أيامه وتواريخه وخطتك اليومية، ثم البرامج والقيم والمتابعة والتوثيق والتصدير الاحترافي.</p>
+        </div>
+        <div class="legend" aria-label="دليل الرموز">
+          <span>🎯 برامج</span>
+          <span>💡 أفكار تنفيذ</span>
+          <span>💎 قيم</span>
+          <span>📸 توثيق مؤقت</span>
+          <span>📊 قياس أثر</span>
+          <span>🧾 مساعد التوثيق</span>
+        </div>
+      </section>
+
+      <details class="privacy-card">
+        <summary>🔒 الخصوصية والاستخدام الآمن</summary>
+        <div class="privacy-card__body">
+          <p><strong>هذا التطبيق مساعد للتخطيط والتوثيق، وليس مرتبطًا تقنيًا بنظام نور ولا يرسل إليه أي بيانات.</strong></p>
+          <p>استخدم معلومات عامة وإحصائية فقط. لا تدخل أسماء الطلاب، أرقام الهوية، بيانات التواصل، بيانات الدخول لنور، أو تفاصيل الحالات الصحية أو السلوكية أو الأسرية الفردية.</p>
+          <p><strong>صور التوثيق مؤقتة في الذاكرة ولا تُحفظ بعد تحديث الصفحة أو إغلاقها.</strong> لا ترفع صورًا يظهر فيها أشخاص يمكن التعرف عليهم. التصدير إلى PDF أو Word ينشئ ملفًا مستقلًا على جهاز المستخدم ويجب التعامل معه وفق ضوابط الجهة.</p>
+        </div>
+      </details>
+
+      <section class="achievement-section" aria-labelledby="achievementTitle">
+        <div class="section-title">
+          <div>
+            <span class="eyebrow">متابعة التنفيذ</span>
+            <h2 id="achievementTitle">لوحة الإنجاز وجواز الأثر</h2>
+          </div>
+          <span class="hint">يُختم الأسبوع تلقائيًا عند اختيار «تم التنفيذ»</span>
+        </div>
+        <div id="dashboard" class="dashboard"></div>
+        <div class="passport-card">
+          <div class="passport-card__head">
+            <div>
+              <span class="eyebrow">جواز الأثر</span>
+              <h3>سبع محطات… وأثر واحد متكامل</h3>
+            </div>
+            <span id="passportStatus" class="passport-status">٠ من ٧</span>
+          </div>
+          <div id="impactPassport" class="impact-passport"></div>
+        </div>
+      </section>
+
+      <section class="week-workspace-section" aria-labelledby="weeklyWorkspaceTitle">
+        <div class="section-title week-workspace-title">
+          <div>
+            <span class="eyebrow">مساحة العمل الأسبوعية</span>
+            <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
+            <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
+          </div>
+          <span class="version-chip">الإصدار ١١</span>
+        </div>
+
+        <div class="week-navigator" aria-label="التنقل بين الأسابيع">
+          <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
+          <label class="week-select-wrap" for="weekSelector">
+            <span>اختيار الأسبوع</span>
+            <select id="weekSelector" aria-label="اختيار الأسبوع"></select>
+          </label>
+          <button class="week-nav-btn" id="prevWeekBtn" type="button" aria-label="الأسبوع السابق">→ السابق</button>
+          <div class="week-nav-progress" id="weekNavProgress" aria-live="polite"></div>
+        </div>
+
+        <div id="weekWorkspace" class="week-workspace" aria-live="polite"></div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <strong>أ/ فاطمة هزازي</strong>
+      <span>•</span>
+      <span>مساعد الموجه الطلابي — الإصدار ١١</span>
+    </footer>
+  </div>
+
+  <dialog class="report-settings" id="reportSettingsDialog" aria-labelledby="reportSettingsTitle">
+    <div class="dialog-head">
+      <div>
+        <span class="eyebrow">هوية التقرير</span>
+        <h2 id="reportSettingsTitle">إعدادات التقرير</h2>
+      </div>
+      <button class="dialog-close" id="closeReportSettingsBtn" type="button" aria-label="إغلاق">×</button>
+    </div>
+    <div class="report-settings__grid">
+      <label><span>اسم مُعدّ التقرير</span><input id="reportUserName" type="text" maxlength="120" placeholder="الاسم" /></label>
+      <label><span>إدارة التعليم</span><input id="reportEducationAdmin" type="text" maxlength="120" placeholder="إدارة التعليم" /></label>
+      <label><span>اسم المدرسة</span><input id="reportSchoolName" type="text" maxlength="120" placeholder="اسم المدرسة" /></label>
+      <label><span>مدير المدرسة</span><input id="reportPrincipalName" type="text" maxlength="120" placeholder="اسم مدير المدرسة" /></label>
+      <label><span>العام الدراسي (اختياري)</span><input id="reportAcademicYear" type="text" maxlength="60" placeholder="مثال: ١٤٤٨هـ" /></label>
+    </div>
+    <div class="logo-settings">
+      <div class="logo-settings__preview"><img id="reportLogoPreview" src="forum-logo.png" alt="معاينة شعار التقرير" /></div>
+      <div class="logo-settings__actions">
+        <strong>شعار التقرير</strong>
+        <p>PNG أو JPEG أو WebP فقط، بحد أقصى ٢ م.ب. تتم إعادة معالجة الصورة لإزالة البيانات الوصفية غير الضرورية.</p>
+        <label class="btn btn--soft">🖼️ اختيار شعار<input id="reportLogoInput" type="file" accept="image/png,image/jpeg,image/webp" hidden /></label>
+        <button class="btn" id="resetReportLogoBtn" type="button">استخدام شعار التطبيق الافتراضي</button>
+      </div>
+    </div>
+    <div class="dialog-actions">
+      <button class="btn" id="cancelReportSettingsBtn" type="button">إغلاق</button>
+      <button class="btn btn--primary" id="saveReportSettingsBtn" type="button">حفظ إعدادات التقرير</button>
+    </div>
+  </dialog>
+
+  <dialog class="privacy-gate" id="privacyGate" aria-labelledby="privacyGateTitle">
+    <div class="privacy-gate__icon">🔒</div>
+    <h2 id="privacyGateTitle">الاستخدام الآمن للتطبيق</h2>
+    <p>هذا التطبيق مخصص للتخطيط والتوثيق العام فقط. لا تدخل بيانات شخصية أو حساسة للطلاب، ولا بيانات دخول الأنظمة الرسمية.</p>
+    <ul>
+      <li>الصور المضافة للتوثيق مؤقتة ولا تُحفظ بعد إغلاق الصفحة أو تحديثها.</li>
+      <li>JSON لا يصدّر صور التوثيق.</li>
+      <li>تصدير PDF أو Word أو Excel ينشئ ملفًا محليًا على جهازك، ويمكن أن يتضمن صور الشواهد المؤقتة الموجودة وقت التصدير؛ احفظه وشاركه وفق ضوابط الجهة.</li>
+    </ul>
+    <button class="btn btn--primary" id="acceptPrivacyBtn" type="button">أوافق وأبدأ</button>
+  </dialog>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

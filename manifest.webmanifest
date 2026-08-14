@@ -1,0 +1,16 @@
+{
+  "name": "مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١١",
+  "short_name": "مساعد الموجه",
+  "description": "مساعد آمن بخطة أسبوعية مستقلة لكل أسبوع وتخطيط يومي للأحد إلى الخميس، مع بنك أفكار ومؤشرات أثر وتصدير Excel احترافي.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f7fbfa",
+  "theme_color": "#087f79",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
