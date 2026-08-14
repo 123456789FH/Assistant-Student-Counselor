@@ -7,7 +7,7 @@
   <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
   <meta name="referrer" content="no-referrer" />
-  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٤</title>
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٥</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
@@ -39,6 +39,7 @@
         <button class="btn btn--soft" id="reportSettingsBtn" type="button">⚙️ إعدادات التقرير</button>
         <button class="btn btn--evidence" id="evidenceStudioBtn" type="button">📷 نموذج شواهد التنفيذ</button>
         <button class="btn btn--report-form" id="programReportStudioBtn" type="button">🧾 تقرير تنفيذ برنامج</button>
+        <button class="btn btn--center" id="programCenterBtn" type="button">🗂️ مركز البرامج والتقارير</button>
 
         <details class="export-menu" id="exportMenu">
           <summary class="btn">📤 تصدير / استيراد</summary>
@@ -78,6 +79,8 @@
           <span>🧾 مساعد التوثيق</span>
           <span>📷 شواهد تنفيذ A4</span>
           <span>🧩 Word قابل للتعبئة</span>
+          <span>🔍 مراجع ذكي قبل التصدير</span>
+          <span>🔗 ربط الخطة بالتقرير والشواهد</span>
         </div>
       </section>
 
@@ -111,6 +114,28 @@
         </div>
       </section>
 
+      <section class="program-center-section" id="programCenterSection" aria-labelledby="programCenterTitle">
+        <div class="section-title program-center-title">
+          <div>
+            <span class="eyebrow">منظومة مترابطة للفصل</span>
+            <h2 id="programCenterTitle">مركز البرامج والتقارير</h2>
+            <p class="section-description">تابعي البرامج من الخطة إلى التقرير ثم الشواهد دون إعادة إدخال البيانات، وابحثي وصفي النتائج حسب المجال والحالة وجاهزية التوثيق.</p>
+          </div>
+          <span class="program-center-chip">الإصدار ١٥</span>
+        </div>
+
+        <div id="programCenterStats" class="program-center-stats" aria-live="polite"></div>
+
+        <div class="program-center-filters" aria-label="تصفية مركز البرامج">
+          <label class="program-center-search"><span>بحث</span><input id="programCenterSearch" type="search" maxlength="120" placeholder="ابحث باسم البرنامج أو الأسبوع أو المجال" /></label>
+          <label><span>المجال</span><select id="programCenterDomain"><option value="">كل المجالات</option><option>نشاط طلابي</option><option>توجيه طلابي</option><option>توعوي</option><option>تعليمي</option><option>مجتمعي</option><option>أخرى</option></select></label>
+          <label><span>الحالة</span><select id="programCenterStatus"><option value="">كل الحالات</option><option value="planned">بدأ التخطيط</option><option value="report">بدأ التقرير</option><option value="evidence">بدأ التوثيق</option><option value="completed">تم التنفيذ</option><option value="needs-review">تحتاج مراجعة</option></select></label>
+          <button class="btn btn--soft" id="programCenterClearFilters" type="button">مسح التصفية</button>
+        </div>
+
+        <div id="programCenterList" class="program-center-list" aria-live="polite"></div>
+      </section>
+
       <section class="week-workspace-section" aria-labelledby="weeklyWorkspaceTitle">
         <div class="section-title week-workspace-title">
           <div>
@@ -118,7 +143,7 @@
             <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
             <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
           </div>
-          <span class="version-chip">الإصدار ١٤</span>
+          <span class="version-chip">الإصدار ١٥</span>
         </div>
         <div class="week-navigator" aria-label="التنقل بين الأسابيع">
           <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
@@ -178,7 +203,8 @@
             <div class="program-report-actions">
               <button class="btn btn--primary" id="exportFillableProgramReportBtn" type="button">🧩 Word قالب قابل للتعبئة</button>
               <button class="btn" id="exportFilledProgramReportBtn" type="button">📝 Word بالبيانات الحالية</button>
-              <button class="btn btn--soft" id="programReportEvidenceBtn" type="button">📷 فتح شواهد التنفيذ</button>
+              <button class="btn btn--soft" id="programReportEvidenceBtn" type="button">🔗 إنشاء الشواهد من التقرير</button>
+              <button class="btn btn--review" id="programReportReviewBtn" type="button">🔍 مراجعة ذكية قبل التصدير</button>
             </div>
             <div class="program-report-tech-note">
               <strong>تقنيًا:</strong> ملف القالب يُبنى مباشرة بصيغة Office Open XML؛ الجداول عناصر <code>w:tbl</code> حقيقية، وحقول الكتابة عناصر Content Controls <code>w:sdt</code>، ونوع المدرسة والمجال ونوع الشاهد قوائم Word منسدلة فعلية. لا يتم إدراج جدول HTML داخل Word.
@@ -189,6 +215,12 @@
           <aside class="program-report-preview" aria-live="polite">
             <div class="program-report-preview-head"><div><span class="eyebrow">جاهزية التقرير</span><strong id="programReportPreviewTitle">تقرير تنفيذ برنامج</strong></div><span id="programReportReadiness">٠٪</span></div>
             <div id="programReportPreviewBody" class="program-report-preview-body"></div>
+            <section class="smart-review-card" id="programReportSmartReview" aria-labelledby="smartReviewTitle">
+              <div class="smart-review-head"><div><span class="eyebrow">مراجع ذكي</span><strong id="smartReviewTitle">فحص قبل التصدير</strong></div><span id="smartReviewBadge">—</span></div>
+              <div id="smartReviewSummary" class="smart-review-summary"></div>
+              <div id="smartReviewList" class="smart-review-list"></div>
+              <small>المراجع ينبه فقط ولا يمنع التصدير، ولا ينشئ بيانات غير مدخلة.</small>
+            </section>
             <div class="program-report-feature-list">
               <span>✓ A4 عمودي وRTL</span>
               <span>✓ جداول Word أصلية</span>
@@ -215,13 +247,16 @@
           <div class="evidence-form-card">
             <div class="evidence-form-head">
               <div><strong>بيانات نموذج الشواهد</strong><small>تُحفظ النصوص محليًا؛ صور الشواهد تبقى مؤقتة في الجلسة الحالية فقط.</small></div>
-              <button class="btn btn--soft" id="evidenceCopyWeekBtn" type="button">↙ تعبئة من بيانات الأسبوع</button>
+              <div class="evidence-head-actions">
+                <button class="btn btn--soft" id="evidenceCopyWeekBtn" type="button">↙ تعبئة من بيانات الأسبوع</button>
+                <button class="btn btn--link" id="evidenceCopyReportBtn" type="button">🔗 تعبئة من تقرير البرنامج</button>
+              </div>
             </div>
             <div class="evidence-form-grid">
               <label><span>اسم المدرسة</span><input id="evidenceSchoolName" type="text" maxlength="120" placeholder="اكتب اسم المدرسة" /></label>
               <label><span>نوع المدرسة</span><select id="evidenceSchoolType"><option value="">اختر</option><option value="بنين">بنين</option><option value="بنات">بنات</option></select></label>
               <label class="wide"><span>اسم البرنامج أو الفعالية</span><input id="evidenceProgramName" type="text" maxlength="300" placeholder="مثال: برنامج تعزيز الانضباط المدرسي" /></label>
-              <label><span>مجال البرنامج</span><select id="evidenceProgramDomain"><option value="">اختر المجال</option><option>نشاط طلابي</option><option>توجيه طلابي</option><option>تعليمي</option><option>توعوي</option><option>مجتمعي</option></select></label>
+              <label><span>مجال البرنامج</span><select id="evidenceProgramDomain"><option value="">اختر المجال</option><option>نشاط طلابي</option><option>توجيه طلابي</option><option>تعليمي</option><option>توعوي</option><option>مجتمعي</option><option>أخرى</option></select></label>
               <label><span>تاريخ التنفيذ</span><input id="evidenceExecutionDate" type="text" maxlength="80" placeholder="مثال: ١٤٤٨/٠٣/١٢هـ" /></label>
               <label><span>الفئة المستهدفة</span><input id="evidenceTargetGroup" type="text" maxlength="200" placeholder="اكتب الفئة المستهدفة" /></label>
               <label><span id="evidenceExecutorLabel">منفذ البرنامج</span><input id="evidenceExecutor" type="text" maxlength="200" placeholder="الاسم أو الصفة" /></label>
@@ -262,7 +297,7 @@
     <footer class="footer">
       <strong>أ/ فاطمة هزازي</strong>
       <span>•</span>
-      <span>مساعد الموجه الطلابي — الإصدار ١٤</span>
+      <span>مساعد الموجه الطلابي — الإصدار ١٥</span>
     </footer>
   </div>
 

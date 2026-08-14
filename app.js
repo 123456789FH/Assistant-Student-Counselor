@@ -197,7 +197,7 @@ const weeks = [
 
 const storageKey = "interactive-guidance-plan-v1";
 const exportSchema = "student-counselor-assistant";
-const exportVersion = 8;
+const exportVersion = 9;
 const evidenceCache = {};
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_EVIDENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -493,6 +493,7 @@ function setNoorField(weekId, field, value, source) {
   getNoorRecord(weekId)[field] = value;
   persistState();
   syncNoorInputs(weekId, field, value, source);
+  renderProgramCenterV15();
 }
 
 function buildNoorSummaryText(week) {
@@ -1178,6 +1179,7 @@ function renderDailyPlanner(week) {
       card.classList.toggle("is-done", done.checked);
       updateDailyPlanProgress(week.id);
       renderDashboard();
+      renderProgramCenterV15();
     });
     doneLabel.append(done, doneText);
     dayActions.appendChild(doneLabel);
@@ -1189,6 +1191,7 @@ function renderDailyPlanner(week) {
       setDayPlanField(week.id, day.index, fieldName, value);
       updateDailyPlanProgress(week.id);
       renderDashboard();
+      renderProgramCenterV15();
     };
     fields.append(
       createDailyField("البرنامج / النشاط", day.activity, "مثال: لقاء توعوي أو مبادرة أو متابعة…", { maxLength: 240, onInput: saveField("activity") }),
@@ -1368,12 +1371,22 @@ function renderWeekWorkspace() {
   pdf.type = "button";
   pdf.textContent = "🖨️ تقرير PDF لهذا الأسبوع";
   pdf.addEventListener("click", () => printWeekReport(week));
+  const reportFlow = document.createElement("button");
+  reportFlow.className = "btn btn--report-form";
+  reportFlow.type = "button";
+  reportFlow.textContent = "🔗 إنشاء تقرير من خطة الأسبوع";
+  reportFlow.addEventListener("click", () => openProgramReportFromWeekV15(week));
   const evidenceDoc = document.createElement("button");
   evidenceDoc.className = "btn btn--evidence";
   evidenceDoc.type = "button";
   evidenceDoc.textContent = "📷 نموذج شواهد البرنامج";
-  evidenceDoc.addEventListener("click", () => { syncEvidenceStudio(); document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" }); });
-  actions.append(save, excel, word, pdf, evidenceDoc);
+  evidenceDoc.addEventListener("click", () => openEvidenceWorkflowV15(week));
+  const review = document.createElement("button");
+  review.className = "btn btn--review";
+  review.type = "button";
+  review.textContent = "🔍 مراجعة جاهزية التقرير";
+  review.addEventListener("click", () => showSmartReviewForWeekV15(week));
+  actions.append(save, excel, word, pdf, reportFlow, evidenceDoc, review);
   body.appendChild(actions);
 
   article.append(head, body);
@@ -1436,6 +1449,7 @@ function refreshDynamicUI() {
   });
   syncWeekNavigatorUI();
   renderDashboard();
+  renderProgramCenterV15();
 }
 
 function renderAll() {
@@ -2423,6 +2437,7 @@ function init() {
   wireWeekNavigator();
   wireEvidenceStudio();
   wireProgramReportStudio();
+  wireProgramCenterV15();
   renderAll();
   loadEvidence();
   syncEvidenceStudio();
@@ -2680,7 +2695,7 @@ ${reportParts.join("")}
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
 
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(weekExportTitle(selectedWeeks))}</dc:title><dc:subject>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</dc:subject><dc:creator>مساعد الموجه الطلابي</dc:creator><cp:lastModifiedBy>مساعد الموجه الطلابي</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
 
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
@@ -2694,7 +2709,7 @@ ${reportParts.join("")}
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v14.docx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v15.docx`);
   setStatus("تم تجهيز Word الاحترافي");
   toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
@@ -3016,7 +3031,7 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v14.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v15.xlsx`);
   toast(selectedWeeks.length === 1
     ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
     : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
@@ -3079,7 +3094,7 @@ function sanitizeEvidenceDoc(source) {
     schoolName: safeString(doc.schoolName, 120),
     schoolType,
     programName: safeString(doc.programName, 300),
-    domain: ["نشاط طلابي", "توجيه طلابي", "تعليمي", "توعوي", "مجتمعي"].includes(doc.domain) ? doc.domain : "توجيه طلابي",
+    domain: ["نشاط طلابي", "توجيه طلابي", "تعليمي", "توعوي", "مجتمعي", "أخرى"].includes(doc.domain) ? doc.domain : "توجيه طلابي",
     executionDate: safeString(doc.executionDate, 80),
     targetGroup: safeString(doc.targetGroup, 200),
     executor: safeString(doc.executor, 200),
@@ -3137,7 +3152,10 @@ function evidenceGenderLabels(type) {
 
 function scheduleEvidencePreview() {
   clearTimeout(evidencePreviewTimer);
-  evidencePreviewTimer = setTimeout(() => renderEvidenceDocumentPreview(evidenceWeek()), 70);
+  evidencePreviewTimer = setTimeout(() => {
+    renderEvidenceDocumentPreview(evidenceWeek());
+    renderProgramCenterV15();
+  }, 70);
 }
 
 function bindEvidenceTextField(id, field, { globalSchool = false } = {}) {
@@ -3181,6 +3199,7 @@ function wireEvidenceStudio() {
   document.querySelector("#evidenceCopyWeekBtn")?.addEventListener("click", () => {
     copyEvidenceDataFromWeek(evidenceWeek());
   });
+  document.querySelector("#evidenceCopyReportBtn")?.addEventListener("click", () => copyEvidenceDataFromProgramReportV15(evidenceWeek(), { notify: true }));
   document.querySelector("#exportEvidenceWordBtn")?.addEventListener("click", () => exportEvidenceWord(evidenceWeek()));
   document.querySelector("#printEvidencePdfBtn")?.addEventListener("click", () => printEvidenceDocument(evidenceWeek()));
   document.querySelector("#exportEvidencePngBtn")?.addEventListener("click", () => exportEvidencePng(evidenceWeek()));
@@ -3475,10 +3494,10 @@ async function exportEvidenceWord(week) {
   const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="50" w:line="260" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
   const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length?'<Default Extension="jpeg" ContentType="image/jpeg"/>':""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const coreXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(evidenceProgramTitle(data.programName))}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
-  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
+  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
   const entries=[{name:"[Content_Types].xml",data:contentTypes},{name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},{name:"word/document.xml",data:documentXml},{name:"word/styles.xml",data:stylesXml},{name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`},{name:"docProps/core.xml",data:coreXml},{name:"docProps/app.xml",data:appXml},...mediaEntries];
   const blob=makeZip(entries,"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v14.docx`);
+  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v15.docx`);
   setStatus("تم تجهيز Word مستقل للشواهد");
 }
 
@@ -3659,10 +3678,8 @@ function wireProgramReportStudio() {
   document.querySelector("#programReportCopyWeekBtn")?.addEventListener("click", () => copyProgramReportFromWeek(evidenceWeek()));
   document.querySelector("#exportFillableProgramReportBtn")?.addEventListener("click", () => exportProgramReportWord(evidenceWeek(), { fillable: true }));
   document.querySelector("#exportFilledProgramReportBtn")?.addEventListener("click", () => exportProgramReportWord(evidenceWeek(), { fillable: false }));
-  document.querySelector("#programReportEvidenceBtn")?.addEventListener("click", () => {
-    syncEvidenceStudio();
-    document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
+  document.querySelector("#programReportEvidenceBtn")?.addEventListener("click", () => openEvidenceFromProgramReportV15(evidenceWeek()));
+  document.querySelector("#programReportReviewBtn")?.addEventListener("click", () => showSmartReviewForWeekV15(evidenceWeek()));
 }
 
 function copyProgramReportFromWeek(week) {
@@ -3672,15 +3689,15 @@ function copyProgramReportFromWeek(week) {
   const evidenceDoc = getEvidenceDoc(week.id);
   const daily = dailyPlansForWeek(week).filter((day) => day.done && dayPlanHasContent(day));
 
-  report.schoolName = state.school || report.schoolName;
-  report.schoolType = evidenceDoc.schoolType || report.schoolType;
-  report.programName = record.program || report.programName;
-  report.domain = evidenceDoc.domain || report.domain;
-  report.targetGroup = record.targetGroup || report.targetGroup;
-  report.executor = state.report?.userName || report.executor;
-  report.beneficiaries = record.beneficiaries || report.beneficiaries;
-  report.mechanism = record.procedure || report.mechanism;
-  report.evidenceAvailable = record.evidenceText || report.evidenceAvailable;
+  report.schoolName = report.schoolName || state.school || "";
+  report.schoolType = report.schoolType || evidenceDoc.schoolType || "";
+  report.programName = report.programName || record.program || "";
+  report.domain = report.domain || evidenceDoc.domain || "";
+  report.targetGroup = report.targetGroup || record.targetGroup || "";
+  report.executor = report.executor || state.report?.userName || "";
+  report.beneficiaries = report.beneficiaries || record.beneficiaries || "";
+  report.mechanism = report.mechanism || record.procedure || "";
+  report.evidenceAvailable = report.evidenceAvailable || record.evidenceText || "";
   if (!report.executionDate && evidenceDoc.executionDate) report.executionDate = evidenceDoc.executionDate;
   if (!report.goals && daily.some((day) => day.objective)) report.goals = daily.map((day) => day.objective).filter(Boolean).join("\n");
   if (!report.activities && daily.some((day) => day.activity)) report.activities = daily.map((day) => day.activity).filter(Boolean).join("\n");
@@ -3692,7 +3709,7 @@ function copyProgramReportFromWeek(week) {
   if (!report.impactResult && impactParts.length) report.impactResult = impactParts.join(" • ");
   if (!report.signature) report.signature = report.executor;
   if (!report.footerDate && report.executionDate) report.footerDate = report.executionDate;
-  persistState("تمت تعبئة التقرير من البيانات الفعلية المدخلة في الأسبوع");
+  persistState("تم ربط التقرير بالخطة وتعبئة الحقول الفارغة من بيانات الأسبوع");
   syncProgramReportStudio();
 }
 
@@ -3707,7 +3724,10 @@ function syncProgramReportGenderLabels() {
 
 function scheduleProgramReportPreview() {
   clearTimeout(programReportPreviewTimer);
-  programReportPreviewTimer = setTimeout(() => renderProgramReportPreview(evidenceWeek()), 70);
+  programReportPreviewTimer = setTimeout(() => {
+    renderProgramReportPreview(evidenceWeek());
+    renderProgramCenterV15();
+  }, 70);
 }
 
 function syncProgramReportStudio() {
@@ -3774,6 +3794,7 @@ function renderProgramReportPreview(week) {
     ["الشواهد الحالية", `${arNum((evidenceCache[week.id] || []).length)} صورة مؤقتة`]
   ];
   body.innerHTML = rows.map(([label, value]) => `<div class="program-report-preview-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+  renderSmartReviewV15(week);
 }
 
 function docxFormRunV14(text, { bold = false, size = 20, color = "173F3D", italic = false } = {}) {
@@ -3967,7 +3988,7 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const reportTitle = data.programName ? `تقرير تنفيذ برنامج ${data.programName}` : "تقرير تنفيذ برنامج مدرسي";
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(reportTitle)}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
     { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` },
@@ -3981,7 +4002,354 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   ];
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const kind = fillable ? "قالب-قابل-للتعبئة" : "تقرير-مكتمل";
-  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v14.docx`);
+  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v15.docx`);
   setStatus(fillable ? "تم تجهيز قالب Word القابل للتعبئة" : "تم تجهيز تقرير Word بالبيانات الحالية");
   toast(fillable ? "تم إنشاء DOCX حقيقي بحقـول تعبئة وقوائم Word منسدلة" : "تم إنشاء تقرير DOCX حقيقي بالبيانات الحالية");
+}
+
+/* ============================================================
+   v15 — ربط الخطة بالتقرير والشواهد + مراجع ذكي + مركز البرامج
+   ============================================================ */
+
+const programCenterFiltersV15 = { search: "", domain: "", status: "" };
+
+function rawProgramReportV15(weekId) {
+  const raw = state.programReports?.[completionKey(weekId)];
+  return raw && typeof raw === "object" ? sanitizeProgramReport(raw) : blankProgramReport();
+}
+
+function rawEvidenceDocV15(weekId) {
+  const raw = state.evidenceDocs?.[completionKey(weekId)];
+  return raw && typeof raw === "object" ? sanitizeEvidenceDoc(raw) : blankEvidenceDoc();
+}
+
+function rawNoorRecordV15(weekId) {
+  const raw = state.noor?.[completionKey(weekId)];
+  if (raw && typeof raw === "object") return raw;
+  return { program: "", targetGroup: "", beneficiaries: "", participants: "", procedure: "", evidenceText: "", obstacles: "", notes: "" };
+}
+
+function programReportDataV15(week) {
+  const report = rawProgramReportV15(week.id);
+  return {
+    ...report,
+    schoolName: report.schoolName || state.school || "",
+    executor: report.executor || state.report?.userName || "",
+    signature: report.signature || report.executor || state.report?.userName || ""
+  };
+}
+
+function programReportHasDataV15(weekId) {
+  const raw = rawProgramReportV15(weekId);
+  const keys = [
+    "programName", "schoolType", "domain", "targetGroup", "executionDate", "location",
+    "beneficiaries", "goals", "mechanism", "activities", "results", "strengths",
+    "recommendations", "evidenceAvailable", "evidenceLink", "impactTool", "impactResult"
+  ];
+  return keys.some((key) => Boolean(String(raw[key] || "").trim()));
+}
+
+function evidenceDocHasDataV15(weekId) {
+  const raw = rawEvidenceDocV15(weekId);
+  const keys = ["programName", "schoolType", "executionDate", "targetGroup", "summary", "output", "notes"];
+  return keys.some((key) => Boolean(String(raw[key] || "").trim())) || Boolean((evidenceCache[weekId] || []).length);
+}
+
+function weekPlanHasDataV15(week) {
+  const daily = getWeekDailyStats(week.id);
+  const record = rawNoorRecordV15(week.id);
+  const recordHas = [record.program, record.targetGroup, record.beneficiaries, record.procedure, record.evidenceText]
+    .some((value) => Boolean(String(value || "").trim()));
+  return daily.planned > 0 || selectedIdeasForWeek(week).length > 0 || recordHas || Boolean(state.completed[completionKey(week.id)]);
+}
+
+function parseBeneficiariesV15(value) {
+  const western = toWesternDigits(String(value || "")).replace(/[,،\s]/g, "");
+  if (!/^\d+$/.test(western)) return null;
+  const parsed = Number(western);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function programReportReviewV15(week) {
+  const data = programReportDataV15(week);
+  const issues = [];
+  const missing = (pairs) => pairs.filter(([, value]) => !String(value || "").trim()).map(([label]) => label);
+
+  const missingIdentity = missing([
+    ["اسم المدرسة", data.schoolName], ["نوع المدرسة", data.schoolType], ["اسم البرنامج", data.programName],
+    ["مجال البرنامج", data.domain], ["الفئة المستهدفة", data.targetGroup], ["تاريخ التنفيذ", data.executionDate],
+    ["مكان التنفيذ", data.location], [programReportGenderLabels(data.schoolType).executor, data.executor], ["عدد المستفيدين", data.beneficiaries]
+  ]);
+  if (missingIdentity.length) {
+    issues.push({ level: "error", title: "بيانات أساسية ناقصة", detail: `استكمل: ${missingIdentity.join("، ")}.` });
+  }
+
+  const missingContent = missing([
+    ["الأهداف", data.goals], ["آلية التنفيذ", data.mechanism], ["الأنشطة المنفذة", data.activities], ["النتائج والمخرجات", data.results]
+  ]);
+  if (missingContent.length) {
+    issues.push({ level: "error", title: "محتوى التقرير غير مكتمل", detail: `الحقول الناقصة: ${missingContent.join("، ")}.` });
+  }
+
+  if (String(data.beneficiaries || "").trim() && parseBeneficiariesV15(data.beneficiaries) == null) {
+    issues.push({ level: "warning", title: "عدد المستفيدين يحتاج مراجعة", detail: "يفضل إدخال عدد رقمي واضح حتى يظهر صحيحًا في الملخصات الفصلية." });
+  }
+
+  const target = String(data.targetGroup || "");
+  if (data.schoolType === "بنات" && target.includes("طلاب") && !target.includes("طالبات")) {
+    issues.push({ level: "warning", title: "اتساق الصياغة", detail: "نوع المدرسة «بنات» بينما الفئة المستهدفة تتضمن صياغة «طلاب». راجع الصياغة قبل التصدير." });
+  }
+  if (data.schoolType === "بنين" && target.includes("طالبات")) {
+    issues.push({ level: "warning", title: "اتساق الصياغة", detail: "نوع المدرسة «بنين» بينما الفئة المستهدفة تتضمن صياغة «طالبات». راجع الصياغة قبل التصدير." });
+  }
+
+  if (data.impactTool && !data.impactResult) {
+    issues.push({ level: "info", title: "قياس الأثر", detail: "أداة القياس مدخلة دون نتيجة. اترك النتيجة فارغة فقط إذا لم تتوفر بيانات فعلية." });
+  } else if (!data.impactTool && data.impactResult) {
+    issues.push({ level: "warning", title: "قياس الأثر غير موضح", detail: "تم إدخال نتيجة قياس أثر دون تحديد الأداة المستخدمة." });
+  } else if (!data.impactTool && !data.impactResult) {
+    issues.push({ level: "info", title: "قياس الأثر غير مدخل", detail: "هذا ليس خطأ؛ يبقى القسم فارغًا إذا لم تتوفر بيانات فعلية." });
+  }
+
+  const photos = (evidenceCache[week.id] || []).length;
+  if (!photos && !data.evidenceAvailable && !data.evidenceLink) {
+    issues.push({ level: "warning", title: "لا توجد شواهد مرتبطة", detail: "أضف نوع الشاهد أو صورًا مؤقتة أو رابطًا/QR عند توفرها." });
+  } else if (photos && !data.evidenceAvailable) {
+    issues.push({ level: "info", title: "صور موجودة دون وصف عام للشواهد", detail: `يوجد ${arNum(photos)} صورة مؤقتة؛ يمكن تحديد أنواع الشواهد في نموذج الشواهد.` });
+  }
+
+  if (!String(data.signature || "").trim()) {
+    issues.push({ level: "info", title: "التوقيع", detail: "خانة الاسم والتوقيع فارغة ويمكن تعبئتها داخل Word لاحقًا." });
+  }
+  if (!String(data.footerDate || "").trim()) {
+    issues.push({ level: "info", title: "تاريخ الاعتماد", detail: "خانة التاريخ النهائية فارغة ويمكن تعبئتها يدويًا عند الاعتماد." });
+  }
+  if (!state.report?.logoDataUrl) {
+    issues.push({ level: "info", title: "شعار الجهة غير مرفوع", detail: "ارفع الشعار المعتمد من إعدادات التقرير إذا رغبت في ظهوره داخل الملفات الرسمية." });
+  }
+
+  const readiness = programReportReadinessValue(data);
+  const errors = issues.filter((item) => item.level === "error").length;
+  const warnings = issues.filter((item) => item.level === "warning").length;
+  const info = issues.filter((item) => item.level === "info").length;
+  const score = Math.max(0, Math.min(100, readiness - warnings * 3));
+  return { data, issues, errors, warnings, info, score, readiness };
+}
+
+function renderSmartReviewV15(week) {
+  const panel = document.querySelector("#programReportSmartReview");
+  const badge = document.querySelector("#smartReviewBadge");
+  const summary = document.querySelector("#smartReviewSummary");
+  const list = document.querySelector("#smartReviewList");
+  if (!panel || !badge || !summary || !list) return;
+  const review = programReportReviewV15(week);
+  panel.classList.toggle("has-errors", review.errors > 0);
+  panel.classList.toggle("is-clean", review.errors === 0 && review.warnings === 0);
+  badge.textContent = `${arNum(review.score)}٪`;
+  if (review.errors) {
+    summary.textContent = `يوجد ${arNum(review.errors)} تنبيه أساسي و${arNum(review.warnings)} ملاحظة تحتاج مراجعة قبل اعتماد التقرير.`;
+  } else if (review.warnings) {
+    summary.textContent = `البيانات الأساسية مكتملة، مع ${arNum(review.warnings)} ملاحظة تحسين. التصدير متاح في جميع الأحوال.`;
+  } else {
+    summary.textContent = "البيانات الأساسية متناسقة وفق الفحص الحالي، ويمكن التصدير مع مراجعة بشرية نهائية قبل الاعتماد.";
+  }
+
+  const important = review.issues.slice(0, 8);
+  if (!important.length) {
+    list.innerHTML = '<div class="smart-review-success">✓ لا توجد ملاحظات ظاهرة في الفحص الحالي</div>';
+    return;
+  }
+  const icons = { error: "!", warning: "•", info: "i" };
+  list.innerHTML = important.map((item) => `<div class="smart-review-item smart-review-item--${item.level}"><i>${icons[item.level]}</i><div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></div></div>`).join("");
+}
+
+function activateWeekForWorkflowV15(week) {
+  if (!week) return;
+  state.activeWeekId = Number(week.id);
+  persistState();
+  renderWeekWorkspace();
+  syncEvidenceStudio();
+  syncProgramReportStudio();
+  renderProgramCenterV15();
+}
+
+function openProgramReportFromWeekV15(week) {
+  activateWeekForWorkflowV15(week);
+  copyProgramReportFromWeek(week);
+  renderProgramCenterV15();
+  setTimeout(() => document.querySelector("#programReportSection")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+}
+
+function copyEvidenceDataFromProgramReportV15(week, { notify = false } = {}) {
+  const report = programReportDataV15(week);
+  const doc = getEvidenceDoc(week.id);
+  doc.schoolName = doc.schoolName || report.schoolName || "";
+  doc.schoolType = doc.schoolType || report.schoolType || "";
+  doc.programName = doc.programName || report.programName || "";
+  if (!doc.domain || doc.domain === "توجيه طلابي") doc.domain = report.domain || doc.domain || "توجيه طلابي";
+  doc.executionDate = doc.executionDate || report.executionDate || "";
+  doc.targetGroup = doc.targetGroup || report.targetGroup || "";
+  doc.executor = doc.executor || report.executor || "";
+  doc.summary = doc.summary || report.mechanism || report.activities || "";
+  doc.output = doc.output || report.results || "";
+  doc.notes = doc.notes || report.recommendations || "";
+  doc.signature = doc.signature || report.signature || report.executor || "";
+  doc.footerDate = doc.footerDate || report.footerDate || report.executionDate || "";
+  doc.items.forEach((item) => { item.type = normalizeEvidenceTypeForSchool(item.type, doc.schoolType); });
+  persistState(notify ? "تم ربط نموذج الشواهد بتقرير البرنامج وتعبئة الحقول الفارغة" : "");
+  syncEvidenceStudio();
+  renderProgramCenterV15();
+  return doc;
+}
+
+function openEvidenceFromProgramReportV15(week) {
+  activateWeekForWorkflowV15(week);
+  copyEvidenceDataFromProgramReportV15(week, { notify: true });
+  setTimeout(() => document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+}
+
+function openEvidenceWorkflowV15(week) {
+  activateWeekForWorkflowV15(week);
+  if (programReportHasDataV15(week.id)) copyEvidenceDataFromProgramReportV15(week, { notify: true });
+  else copyEvidenceDataFromWeek(week);
+  setTimeout(() => document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+}
+
+function showSmartReviewForWeekV15(week) {
+  activateWeekForWorkflowV15(week);
+  renderSmartReviewV15(week);
+  const panel = document.querySelector("#programReportSmartReview");
+  setTimeout(() => {
+    document.querySelector("#programReportSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    panel?.classList.remove("smart-review-flash");
+    void panel?.offsetWidth;
+    panel?.classList.add("smart-review-flash");
+  }, 50);
+}
+
+function programCenterRecordV15(week) {
+  const report = rawProgramReportV15(week.id);
+  const evidence = rawEvidenceDocV15(week.id);
+  const noor = rawNoorRecordV15(week.id);
+  const planStarted = weekPlanHasDataV15(week);
+  const reportStarted = programReportHasDataV15(week.id);
+  const evidenceStarted = evidenceDocHasDataV15(week.id);
+  const completed = Boolean(state.completed[completionKey(week.id)]);
+  const review = programReportReviewV15(week);
+  const beneficiaries = parseBeneficiariesV15(report.beneficiaries || noor.beneficiaries);
+  const programName = report.programName || noor.program || evidence.programName || "لم يُحدد برنامج بعد";
+  const domain = report.domain || (evidenceStarted ? evidence.domain : "") || "";
+  const photos = (evidenceCache[week.id] || []).length;
+  let statusLabel = "لم يبدأ";
+  if (planStarted) statusLabel = "بدأ التخطيط";
+  if (reportStarted) statusLabel = "التقرير قيد الإعداد";
+  if (evidenceStarted) statusLabel = "التوثيق جارٍ";
+  if (completed) statusLabel = "✓ تم التنفيذ";
+  return { week, report, evidence, noor, planStarted, reportStarted, evidenceStarted, completed, review, beneficiaries, programName, domain, photos, statusLabel };
+}
+
+function programCenterMatchesV15(record) {
+  const search = String(programCenterFiltersV15.search || "").trim().toLowerCase();
+  if (search) {
+    const haystack = [record.week.title, record.week.theme, record.programName, record.domain, record.report.targetGroup, record.evidence.targetGroup]
+      .join(" ").toLowerCase();
+    if (!haystack.includes(search)) return false;
+  }
+  if (programCenterFiltersV15.domain && record.domain !== programCenterFiltersV15.domain) return false;
+  const status = programCenterFiltersV15.status;
+  if (status === "planned" && !record.planStarted) return false;
+  if (status === "report" && !record.reportStarted) return false;
+  if (status === "evidence" && !record.evidenceStarted) return false;
+  if (status === "completed" && !record.completed) return false;
+  if (status === "needs-review" && !(record.reportStarted && (record.review.errors > 0 || record.review.warnings > 0))) return false;
+  return true;
+}
+
+function renderProgramCenterV15() {
+  const statsHost = document.querySelector("#programCenterStats");
+  const listHost = document.querySelector("#programCenterList");
+  if (!statsHost || !listHost) return;
+  const records = weeks.map(programCenterRecordV15);
+  const startedPlans = records.filter((record) => record.planStarted).length;
+  const startedReports = records.filter((record) => record.reportStarted).length;
+  const evidenceWeeks = records.filter((record) => record.evidenceStarted).length;
+  const completed = records.filter((record) => record.completed).length;
+  const beneficiaryValues = records.map((record) => record.beneficiaries).filter((value) => value != null);
+  const totalBeneficiaries = beneficiaryValues.reduce((sum, value) => sum + value, 0);
+  const photoCount = records.reduce((sum, record) => sum + record.photos, 0);
+
+  statsHost.innerHTML = `
+    <div class="program-center-stat"><span>أسابيع بدأ تخطيطها</span><strong>${arNum(startedPlans)} / ${arNum(weeks.length)}</strong><small>الخطة اليومية أو المتابعة</small></div>
+    <div class="program-center-stat"><span>تقارير بدأ إعدادها</span><strong>${arNum(startedReports)}</strong><small>مرتبطة ببيانات الأسابيع</small></div>
+    <div class="program-center-stat"><span>أسابيع تم تنفيذها</span><strong>${arNum(completed)}</strong><small>وفق حالة التنفيذ</small></div>
+    <div class="program-center-stat"><span>إجمالي المستفيدين المدخل</span><strong>${arNum(totalBeneficiaries)}</strong><small>${beneficiaryValues.length ? "من الأعداد الرقمية المسجلة" : "لا توجد أعداد رقمية بعد"}</small></div>
+    <div class="program-center-stat"><span>شواهد الجلسة الحالية</span><strong>${arNum(photoCount)}</strong><small>${arNum(evidenceWeeks)} أسابيع بدأ توثيقها</small></div>`;
+
+  const filtered = records.filter(programCenterMatchesV15);
+  if (!filtered.length) {
+    listHost.innerHTML = '<div class="program-center-empty">لا توجد نتائج مطابقة للتصفية الحالية.</div>';
+    return;
+  }
+
+  listHost.innerHTML = filtered.map((record) => {
+    const reportReady = record.reportStarted ? programReportReadinessValue(programReportDataV15(record.week)) : 0;
+    const reportText = record.reportStarted ? `${arNum(reportReady)}٪` : "لم يبدأ";
+    const evidenceText = record.evidenceStarted ? `${arNum(record.photos)} صورة • نموذج بدأ` : "لم يبدأ";
+    const beneficiaryText = record.beneficiaries == null ? "—" : arNum(record.beneficiaries);
+    const reviewText = record.reportStarted ? (record.review.errors ? `${arNum(record.review.errors)} أساسي` : record.review.warnings ? `${arNum(record.review.warnings)} ملاحظة` : "مكتمل") : "بعد بدء التقرير";
+    return `<article class="program-center-card" data-center-week="${record.week.id}">
+      <div class="program-center-card__head">
+        <div><span class="program-center-card__week">${escapeHtml(record.week.title)} • ${escapeHtml(record.week.dates[0])} – ${escapeHtml(record.week.dates[1])}</span><h3>${escapeHtml(record.programName)}</h3></div>
+        <span class="program-center-card__status ${record.completed ? "is-complete" : ""}">${escapeHtml(record.statusLabel)}</span>
+      </div>
+      <div class="program-center-card__body">
+        <div class="program-center-meta">
+          <div><span>المجال</span><strong>${escapeHtml(record.domain || "غير محدد")}</strong></div>
+          <div><span>المستفيدون</span><strong>${escapeHtml(beneficiaryText)}</strong></div>
+          <div><span>الشواهد</span><strong>${escapeHtml(evidenceText)}</strong></div>
+          <div><span>التقرير</span><strong>${escapeHtml(reportText)}</strong></div>
+          <div><span>المراجع الذكي</span><strong>${escapeHtml(reviewText)}</strong></div>
+          <div><span>جاهزية الأسبوع</span><strong>${arNum(getWeekReadiness(record.week))}٪</strong></div>
+        </div>
+        <div class="program-center-readiness"><div class="program-center-readiness__line"><span>جاهزية تقرير التنفيذ</span><strong>${escapeHtml(reportText)}</strong></div><div class="program-center-readiness__bar"><i style="width:${reportReady}%"></i></div></div>
+        <div class="program-center-actions">
+          <button class="btn btn--soft" type="button" data-center-action="week" data-week-id="${record.week.id}">📅 فتح الأسبوع</button>
+          <button class="btn btn--report-form" type="button" data-center-action="report" data-week-id="${record.week.id}">🧾 التقرير</button>
+          <button class="btn btn--evidence" type="button" data-center-action="evidence" data-week-id="${record.week.id}">📷 الشواهد</button>
+          <button class="btn btn--review" type="button" data-center-action="review" data-week-id="${record.week.id}">🔍 مراجعة</button>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function wireProgramCenterV15() {
+  document.querySelector("#programCenterBtn")?.addEventListener("click", () => {
+    renderProgramCenterV15();
+    document.querySelector("#programCenterSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  const search = document.querySelector("#programCenterSearch");
+  const domain = document.querySelector("#programCenterDomain");
+  const status = document.querySelector("#programCenterStatus");
+  search?.addEventListener("input", () => { programCenterFiltersV15.search = safeString(search.value, 120); renderProgramCenterV15(); });
+  domain?.addEventListener("change", () => { programCenterFiltersV15.domain = safeString(domain.value, 60); renderProgramCenterV15(); });
+  status?.addEventListener("change", () => { programCenterFiltersV15.status = safeString(status.value, 30); renderProgramCenterV15(); });
+  document.querySelector("#programCenterClearFilters")?.addEventListener("click", () => {
+    programCenterFiltersV15.search = ""; programCenterFiltersV15.domain = ""; programCenterFiltersV15.status = "";
+    if (search) search.value = ""; if (domain) domain.value = ""; if (status) status.value = "";
+    renderProgramCenterV15();
+  });
+  document.querySelector("#programCenterList")?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-center-action]");
+    if (!button) return;
+    const week = weeks.find((item) => item.id === Number(button.dataset.weekId));
+    if (!week) return;
+    const action = button.dataset.centerAction;
+    if (action === "week") {
+      activateWeekForWorkflowV15(week);
+      setTimeout(() => document.querySelector("#weekWorkspace")?.scrollIntoView({ behavior: "smooth", block: "start" }), 40);
+    } else if (action === "report") openProgramReportFromWeekV15(week);
+    else if (action === "evidence") openEvidenceWorkflowV15(week);
+    else if (action === "review") showSmartReviewForWeekV15(week);
+  });
 }

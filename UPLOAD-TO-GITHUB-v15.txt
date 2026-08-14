@@ -1,0 +1,22 @@
+رفع الإصدار ١٥ إلى مستودع Assistant-Student-Counselor
+===================================================
+
+استبدلي الملفات التالية في جذر المستودع:
+- index.html
+- styles.css
+- app.js
+- manifest.webmanifest
+- service-worker.js
+- README.txt
+- CHANGELOG-v15.txt
+
+احتفظي/ارفعي كذلك:
+- forum-logo.png
+- icon-192.png
+- icon-512.png
+- assets/fonts/Tajawal-Regular.ttf
+- assets/fonts/Tajawal-Bold.ttf
+- assets/fonts/OFL-tajawal.txt
+
+مهم: service-worker.js محدث إلى cache v15، لذلك يجب استبداله حتى تظهر النسخة الجديدة على الأجهزة المثبتة.
+لا ترفعي node_modules.
