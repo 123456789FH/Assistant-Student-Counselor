@@ -197,7 +197,7 @@ const weeks = [
 
 const storageKey = "interactive-guidance-plan-v1";
 const exportSchema = "student-counselor-assistant";
-const exportVersion = 7;
+const exportVersion = 8;
 const evidenceCache = {};
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_EVIDENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -216,6 +216,7 @@ function blankState() {
     noor: {},
     dayPlans: {},
     evidenceDocs: {},
+    programReports: {},
     activeWeekId: 1,
     report: {
       userName: "",
@@ -246,6 +247,7 @@ function loadState() {
       noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {},
       dayPlans: parsed?.dayPlans && typeof parsed.dayPlans === "object" ? parsed.dayPlans : {},
       evidenceDocs: parsed?.evidenceDocs && typeof parsed.evidenceDocs === "object" ? parsed.evidenceDocs : {},
+      programReports: parsed?.programReports && typeof parsed.programReports === "object" ? parsed.programReports : {},
       activeWeekId: weeks.some((week) => week.id === Number(parsed?.activeWeekId)) ? Number(parsed.activeWeekId) : 1
     };
   } catch {
@@ -1231,6 +1233,7 @@ function setActiveWeek(weekId) {
   renderWeekWorkspace();
   refreshDynamicUI();
   syncEvidenceStudio();
+  syncProgramReportStudio();
   document.querySelector("#weekWorkspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -1918,6 +1921,7 @@ function cloneStateForWeeks(selection) {
   selectedWeeks.forEach((week) => {
     const evidenceKey = completionKey(week.id);
     if (state.evidenceDocs?.[evidenceKey]) clean.evidenceDocs[evidenceKey] = sanitizeEvidenceDoc(state.evidenceDocs[evidenceKey]);
+    if (state.programReports?.[evidenceKey]) clean.programReports[evidenceKey] = sanitizeProgramReport(state.programReports[evidenceKey]);
     const key = completionKey(week.id);
     clean.completed[key] = Boolean(state.completed?.[key]);
     const indicator = state.indicators?.[key] || {};
@@ -2049,6 +2053,12 @@ function sanitizedImportedState(raw) {
     weeks.forEach((week) => {
       const key = completionKey(week.id);
       if (source.evidenceDocs[key] && typeof source.evidenceDocs[key] === "object") clean.evidenceDocs[key] = sanitizeEvidenceDoc(source.evidenceDocs[key]);
+    });
+  }
+  if (source.programReports && typeof source.programReports === "object") {
+    weeks.forEach((week) => {
+      const key = completionKey(week.id);
+      if (source.programReports[key] && typeof source.programReports[key] === "object") clean.programReports[key] = sanitizeProgramReport(source.programReports[key]);
     });
   }
   clean.activeWeekId = weeks.some((week) => week.id === Number(source.activeWeekId)) ? Number(source.activeWeekId) : 1;
@@ -2412,9 +2422,11 @@ function init() {
   wireReportSettings();
   wireWeekNavigator();
   wireEvidenceStudio();
+  wireProgramReportStudio();
   renderAll();
   loadEvidence();
   syncEvidenceStudio();
+  syncProgramReportStudio();
   wirePrivacyGate();
   wirePWA();
 }
@@ -2668,7 +2680,7 @@ ${reportParts.join("")}
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
 
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(weekExportTitle(selectedWeeks))}</dc:title><dc:subject>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</dc:subject><dc:creator>مساعد الموجه الطلابي</dc:creator><cp:lastModifiedBy>مساعد الموجه الطلابي</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>13.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
 
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
@@ -2682,7 +2694,7 @@ ${reportParts.join("")}
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v13.docx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v14.docx`);
   setStatus("تم تجهيز Word الاحترافي");
   toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
@@ -3004,7 +3016,7 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v13.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v14.xlsx`);
   toast(selectedWeeks.length === 1
     ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
     : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
@@ -3463,10 +3475,10 @@ async function exportEvidenceWord(week) {
   const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="50" w:line="260" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
   const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length?'<Default Extension="jpeg" ContentType="image/jpeg"/>':""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const coreXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(evidenceProgramTitle(data.programName))}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
-  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>13.0</AppVersion></Properties>`;
+  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
   const entries=[{name:"[Content_Types].xml",data:contentTypes},{name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},{name:"word/document.xml",data:documentXml},{name:"word/styles.xml",data:stylesXml},{name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`},{name:"docProps/core.xml",data:coreXml},{name:"docProps/app.xml",data:appXml},...mediaEntries];
   const blob=makeZip(entries,"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v13.docx`);
+  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v14.docx`);
   setStatus("تم تجهيز Word مستقل للشواهد");
 }
 
@@ -3505,4 +3517,471 @@ async function exportEvidencePng(week){
   const groups=evidencePhotoGroups(week.id);setStatus("جارٍ إنشاء صفحات PNG عالية الدقة…");
   for(let i=0;i<groups.length;i++){const canvas=await buildEvidenceCanvasPage(week,i,groups.length,groups[i]);const blob=await canvasBlob(canvas,"image/png",1);if(blob)downloadBlob(blob,"image/png",`${safeFileBase(evidenceDisplayData(week).programName||week.title)}-شواهد-${i+1}-من-${groups.length}.png`)}
   setStatus(`تم إنشاء ${groups.length} صفحة PNG عالية الدقة`);
+}
+
+
+/* ============================================================
+   v14 — تقرير تنفيذ برنامج مدرسي + DOCX Fillable Content Controls
+   - جداول Word حقيقية w:tbl
+   - حقول تعبئة Word Content Controls w:sdt
+   - قوائم منسدلة Word حقيقية لنوع المدرسة والمجال ونوع الشاهد
+   ============================================================ */
+
+const programReportDomainsV14 = ["نشاط طلابي", "توجيه طلابي", "توعوي", "تعليمي", "مجتمعي", "أخرى"];
+let programReportPreviewTimer = null;
+
+function blankProgramReport() {
+  return {
+    schoolName: "",
+    schoolType: "",
+    programName: "",
+    domain: "",
+    targetGroup: "",
+    executionDate: "",
+    location: "",
+    executor: "",
+    beneficiaries: "",
+    goals: "",
+    mechanism: "",
+    activities: "",
+    results: "",
+    strengths: "",
+    recommendations: "",
+    evidenceAvailable: "",
+    evidenceLink: "",
+    impactTool: "",
+    impactResult: "",
+    signature: "",
+    footerDate: ""
+  };
+}
+
+function sanitizeProgramReport(source) {
+  const item = source && typeof source === "object" ? source : {};
+  const schoolType = ["بنين", "بنات"].includes(item.schoolType) ? item.schoolType : "";
+  const domain = programReportDomainsV14.includes(item.domain) ? item.domain : "";
+  return {
+    schoolName: safeString(item.schoolName, 120),
+    schoolType,
+    programName: safeString(item.programName, 300),
+    domain,
+    targetGroup: safeString(item.targetGroup, 220),
+    executionDate: safeString(item.executionDate, 80),
+    location: safeString(item.location, 180),
+    executor: safeString(item.executor, 200),
+    beneficiaries: safeString(item.beneficiaries, 60),
+    goals: safeString(item.goals, 1800),
+    mechanism: safeString(item.mechanism, 2200),
+    activities: safeString(item.activities, 1800),
+    results: safeString(item.results, 1800),
+    strengths: safeString(item.strengths, 1400),
+    recommendations: safeString(item.recommendations, 1400),
+    evidenceAvailable: safeString(item.evidenceAvailable, 700),
+    evidenceLink: safeString(item.evidenceLink, 700),
+    impactTool: safeString(item.impactTool, 500),
+    impactResult: safeString(item.impactResult, 900),
+    signature: safeString(item.signature, 220),
+    footerDate: safeString(item.footerDate, 80)
+  };
+}
+
+function getProgramReport(weekId) {
+  state.programReports ||= {};
+  const key = completionKey(weekId);
+  if (!state.programReports[key] || typeof state.programReports[key] !== "object") state.programReports[key] = blankProgramReport();
+  state.programReports[key] = sanitizeProgramReport(state.programReports[key]);
+  return state.programReports[key];
+}
+
+function programReportDisplayData(week) {
+  const report = getProgramReport(week.id);
+  return {
+    ...report,
+    schoolName: report.schoolName || state.school || "",
+    executor: report.executor || state.report?.userName || "",
+    signature: report.signature || report.executor || state.report?.userName || ""
+  };
+}
+
+function programReportGenderLabels(type) {
+  if (type === "بنات") return { executor: "منفذة البرنامج", signature: "اسم المنفذة والتوقيع", participant: "الطالبات" };
+  if (type === "بنين") return { executor: "منفذ البرنامج", signature: "اسم المنفذ والتوقيع", participant: "الطلاب" };
+  return { executor: "منفذ/منفذة البرنامج", signature: "اسم المنفذ/المنفذة والتوقيع", participant: "الطلاب/الطالبات" };
+}
+
+function bindProgramReportField(id, field, maxLength = 1000, { globalSchool = false } = {}) {
+  const el = document.querySelector(`#${id}`);
+  if (!el) return;
+  const eventName = el.tagName === "SELECT" ? "change" : "input";
+  el.addEventListener(eventName, () => {
+    const week = evidenceWeek();
+    const report = getProgramReport(week.id);
+    report[field] = safeString(el.value, maxLength);
+    if (field === "schoolType" && !["بنين", "بنات"].includes(report[field])) report[field] = "";
+    if (field === "domain" && !programReportDomainsV14.includes(report[field])) report[field] = "";
+    if (globalSchool) state.school = safeString(el.value, 120);
+    persistState();
+    syncProgramReportGenderLabels();
+    scheduleProgramReportPreview();
+  });
+}
+
+function wireProgramReportStudio() {
+  const fields = [
+    ["programReportSchoolName", "schoolName", 120, { globalSchool: true }],
+    ["programReportSchoolType", "schoolType", 20],
+    ["programReportProgramName", "programName", 300],
+    ["programReportDomain", "domain", 60],
+    ["programReportTargetGroup", "targetGroup", 220],
+    ["programReportExecutionDate", "executionDate", 80],
+    ["programReportLocation", "location", 180],
+    ["programReportExecutor", "executor", 200],
+    ["programReportBeneficiaries", "beneficiaries", 60],
+    ["programReportGoals", "goals", 1800],
+    ["programReportMechanism", "mechanism", 2200],
+    ["programReportActivities", "activities", 1800],
+    ["programReportResults", "results", 1800],
+    ["programReportStrengths", "strengths", 1400],
+    ["programReportRecommendations", "recommendations", 1400],
+    ["programReportEvidenceAvailable", "evidenceAvailable", 700],
+    ["programReportEvidenceLink", "evidenceLink", 700],
+    ["programReportImpactTool", "impactTool", 500],
+    ["programReportImpactResult", "impactResult", 900],
+    ["programReportSignature", "signature", 220],
+    ["programReportFooterDate", "footerDate", 80]
+  ];
+  fields.forEach(([id, field, maxLength, options]) => bindProgramReportField(id, field, maxLength, options || {}));
+
+  document.querySelector("#programReportStudioBtn")?.addEventListener("click", () => {
+    syncProgramReportStudio();
+    document.querySelector("#programReportSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  document.querySelector("#programReportCopyWeekBtn")?.addEventListener("click", () => copyProgramReportFromWeek(evidenceWeek()));
+  document.querySelector("#exportFillableProgramReportBtn")?.addEventListener("click", () => exportProgramReportWord(evidenceWeek(), { fillable: true }));
+  document.querySelector("#exportFilledProgramReportBtn")?.addEventListener("click", () => exportProgramReportWord(evidenceWeek(), { fillable: false }));
+  document.querySelector("#programReportEvidenceBtn")?.addEventListener("click", () => {
+    syncEvidenceStudio();
+    document.querySelector("#evidenceStudioSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
+
+function copyProgramReportFromWeek(week) {
+  const report = getProgramReport(week.id);
+  const record = getNoorRecord(week.id);
+  const indicator = getIndicator(week.id);
+  const evidenceDoc = getEvidenceDoc(week.id);
+  const daily = dailyPlansForWeek(week).filter((day) => day.done && dayPlanHasContent(day));
+
+  report.schoolName = state.school || report.schoolName;
+  report.schoolType = evidenceDoc.schoolType || report.schoolType;
+  report.programName = record.program || report.programName;
+  report.domain = evidenceDoc.domain || report.domain;
+  report.targetGroup = record.targetGroup || report.targetGroup;
+  report.executor = state.report?.userName || report.executor;
+  report.beneficiaries = record.beneficiaries || report.beneficiaries;
+  report.mechanism = record.procedure || report.mechanism;
+  report.evidenceAvailable = record.evidenceText || report.evidenceAvailable;
+  if (!report.executionDate && evidenceDoc.executionDate) report.executionDate = evidenceDoc.executionDate;
+  if (!report.goals && daily.some((day) => day.objective)) report.goals = daily.map((day) => day.objective).filter(Boolean).join("\n");
+  if (!report.activities && daily.some((day) => day.activity)) report.activities = daily.map((day) => day.activity).filter(Boolean).join("\n");
+  if (!report.results && indicator.impactNote) report.results = safeString(indicator.impactNote, 1800);
+  const impactParts = [];
+  if (indicator.participation !== "" && indicator.participation != null) impactParts.push(`المشاركة: ${indicator.participation}%`);
+  if (indicator.achievement !== "" && indicator.achievement != null) impactParts.push(`تحقق الهدف: ${indicator.achievement}%`);
+  if (indicator.satisfaction !== "" && indicator.satisfaction != null) impactParts.push(`رضا المستفيدين: ${indicator.satisfaction}%`);
+  if (!report.impactResult && impactParts.length) report.impactResult = impactParts.join(" • ");
+  if (!report.signature) report.signature = report.executor;
+  if (!report.footerDate && report.executionDate) report.footerDate = report.executionDate;
+  persistState("تمت تعبئة التقرير من البيانات الفعلية المدخلة في الأسبوع");
+  syncProgramReportStudio();
+}
+
+function syncProgramReportGenderLabels() {
+  const report = getProgramReport(evidenceWeek().id);
+  const labels = programReportGenderLabels(report.schoolType);
+  const executorLabel = document.querySelector("#programReportExecutorLabel");
+  const signatureLabel = document.querySelector("#programReportSignatureLabel");
+  if (executorLabel) executorLabel.textContent = labels.executor;
+  if (signatureLabel) signatureLabel.textContent = labels.signature;
+}
+
+function scheduleProgramReportPreview() {
+  clearTimeout(programReportPreviewTimer);
+  programReportPreviewTimer = setTimeout(() => renderProgramReportPreview(evidenceWeek()), 70);
+}
+
+function syncProgramReportStudio() {
+  const week = evidenceWeek();
+  const report = getProgramReport(week.id);
+  const values = {
+    programReportSchoolName: report.schoolName || state.school || "",
+    programReportSchoolType: report.schoolType,
+    programReportProgramName: report.programName,
+    programReportDomain: report.domain,
+    programReportTargetGroup: report.targetGroup,
+    programReportExecutionDate: report.executionDate,
+    programReportLocation: report.location,
+    programReportExecutor: report.executor || state.report?.userName || "",
+    programReportBeneficiaries: report.beneficiaries,
+    programReportGoals: report.goals,
+    programReportMechanism: report.mechanism,
+    programReportActivities: report.activities,
+    programReportResults: report.results,
+    programReportStrengths: report.strengths,
+    programReportRecommendations: report.recommendations,
+    programReportEvidenceAvailable: report.evidenceAvailable,
+    programReportEvidenceLink: report.evidenceLink,
+    programReportImpactTool: report.impactTool,
+    programReportImpactResult: report.impactResult,
+    programReportSignature: report.signature,
+    programReportFooterDate: report.footerDate
+  };
+  Object.entries(values).forEach(([id, value]) => {
+    const el = document.querySelector(`#${id}`);
+    if (el && el.value !== String(value || "")) el.value = value || "";
+  });
+  const chip = document.querySelector("#programReportWeekChip");
+  if (chip) chip.textContent = `${week.title} • ${week.dates[0]} – ${week.dates[1]}`;
+  syncProgramReportGenderLabels();
+  renderProgramReportPreview(week);
+}
+
+function programReportReadinessValue(report) {
+  const core = [report.schoolName, report.schoolType, report.programName, report.domain, report.targetGroup, report.executionDate, report.location, report.executor, report.beneficiaries, report.goals, report.mechanism, report.activities, report.results];
+  const filled = core.filter((value) => String(value || "").trim()).length;
+  return Math.round((filled / core.length) * 100);
+}
+
+function renderProgramReportPreview(week) {
+  const data = programReportDisplayData(week);
+  const readiness = programReportReadinessValue(data);
+  const title = document.querySelector("#programReportPreviewTitle");
+  if (title) title.textContent = data.programName ? `تقرير تنفيذ برنامج ${data.programName}` : "تقرير تنفيذ برنامج";
+  const badge = document.querySelector("#programReportReadiness");
+  if (badge) {
+    badge.style.setProperty("--report-ready", `${readiness}%`);
+    badge.dataset.label = `${arNum(readiness)}٪`;
+    badge.textContent = "";
+  }
+  const body = document.querySelector("#programReportPreviewBody");
+  if (!body) return;
+  const rows = [
+    ["المدرسة", data.schoolName || "غير مدخل"],
+    ["البرنامج", data.programName || "غير مدخل"],
+    ["المجال", data.domain || "غير مدخل"],
+    ["الفئة", data.targetGroup || "غير مدخل"],
+    ["التاريخ", data.executionDate || "غير مدخل"],
+    ["الشواهد الحالية", `${arNum((evidenceCache[week.id] || []).length)} صورة مؤقتة`]
+  ];
+  body.innerHTML = rows.map(([label, value]) => `<div class="program-report-preview-row"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`).join("");
+}
+
+function docxFormRunV14(text, { bold = false, size = 20, color = "173F3D", italic = false } = {}) {
+  const parts = String(text ?? "").split(/\r?\n/);
+  const content = parts.map((part, index) => `${index ? "<w:br/>" : ""}<w:t xml:space="preserve">${xmlEscape(part)}</w:t>`).join("");
+  return `<w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal" w:eastAsia="Tajawal"/>${bold ? "<w:b/><w:bCs/>" : ""}${italic ? "<w:i/><w:iCs/>" : ""}<w:color w:val="${color}"/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr>${content}</w:r>`;
+}
+
+function docxFormParagraphV14(text, { style = "Normal", bold = false, size = 20, color = "173F3D", center = false, spacingAfter = 35, pageBreakBefore = false } = {}) {
+  return `<w:p><w:pPr><w:pStyle w:val="${style}"/><w:bidi/><w:jc w:val="${center ? "center" : "right"}"/>${pageBreakBefore ? "<w:pageBreakBefore/>" : ""}<w:spacing w:after="${spacingAfter}"/></w:pPr>${docxFormRunV14(text, { bold, size, color })}</w:p>`;
+}
+
+function docxContentControlV14({ id, tag, alias, value = "", placeholder = "اكتب هنا", multiline = false, style = "FieldValue" }) {
+  const shown = String(value || "").trim() || placeholder;
+  return `<w:sdt><w:sdtPr><w:alias w:val="${xmlEscape(alias)}"/><w:tag w:val="${xmlEscape(tag)}"/><w:id w:val="${id}"/><w:text${multiline ? ' w:multiLine="1"' : ""}/></w:sdtPr><w:sdtContent>${docxFormParagraphV14(shown, { style, color: value ? "173F3D" : "758986", size: 19, spacingAfter: 0 })}</w:sdtContent></w:sdt>`;
+}
+
+function docxDropdownControlV14({ id, tag, alias, value = "", options = [] }) {
+  const selected = options.includes(value) ? value : "اختر";
+  const list = ["اختر", ...options.filter((item) => item !== "اختر")];
+  return `<w:sdt><w:sdtPr><w:alias w:val="${xmlEscape(alias)}"/><w:tag w:val="${xmlEscape(tag)}"/><w:id w:val="${id}"/><w:dropDownList>${list.map((item) => `<w:listItem w:displayText="${xmlEscape(item)}" w:value="${xmlEscape(item)}"/>`).join("")}</w:dropDownList></w:sdtPr><w:sdtContent>${docxFormParagraphV14(selected, { style: "FieldValue", color: selected === "اختر" ? "758986" : "173F3D", size: 19, spacingAfter: 0 })}</w:sdtContent></w:sdt>`;
+}
+
+function docxProgramLabelCellV14(label, width = 2100) {
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:fill="EAF7F4"/><w:tcMar><w:top w:w="90" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="90" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr>${docxFormParagraphV14(label, { style: "FieldLabel", bold: true, size: 18, color: "075F5B", spacingAfter: 0 })}</w:tc>`;
+}
+
+function docxProgramValueCellV14(inner, width = 2600, { fill = "FFFFFF", span = 1 } = {}) {
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${span > 1 ? `<w:gridSpan w:val="${span}"/>` : ""}<w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="80" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr>${inner}</w:tc>`;
+}
+
+function docxProgramTablePrV14() {
+  return `<w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="5" w:color="D8E6E3"/><w:left w:val="single" w:sz="5" w:color="D8E6E3"/><w:bottom w:val="single" w:sz="5" w:color="D8E6E3"/><w:right w:val="single" w:sz="5" w:color="D8E6E3"/><w:insideH w:val="single" w:sz="4" w:color="D8E6E3"/><w:insideV w:val="single" w:sz="4" w:color="D8E6E3"/></w:tblBorders></w:tblPr>`;
+}
+
+function docxProgramSectionV14(title, inner, { fill = "F8FBFA" } = {}) {
+  return `<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="9400"/></w:tblGrid><w:tr>${docxProgramValueCellV14(docxFormParagraphV14(title, { style: "SectionTitle", bold: true, size: 21, color: "FFFFFF", center: false, spacingAfter: 0 }), 9400, { fill: "087F79" })}</w:tr><w:tr>${docxProgramValueCellV14(inner, 9400, { fill })}</w:tr></w:tbl>`;
+}
+
+function docxProgramHeaderV14(logoXml, schoolName = "") {
+  const official = `${docxFormParagraphV14("المملكة العربية السعودية", { bold: true, size: 21, center: true, spacingAfter: 20 })}${docxFormParagraphV14("وزارة التعليم", { bold: true, size: 21, center: true, spacingAfter: 20 })}${docxFormParagraphV14(state.admin ? `إدارة التعليم: ${state.admin}` : "إدارة التعليم", { size: 18, center: true, spacingAfter: 16 })}${docxFormParagraphV14(schoolName ? `المدرسة: ${schoolName}` : "اسم المدرسة", { size: 18, center: true, spacingAfter: 0 })}`;
+  const logoCell = `<w:tc><w:tcPr><w:tcW w:w="2000" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${logoXml || docxFormParagraphV14("مساحة شعار وزارة التعليم / الجهة", { size: 14, color: "7B8E8B", center: true, spacingAfter: 0 })}</w:tc>`;
+  const textCell = `<w:tc><w:tcPr><w:tcW w:w="7400" w:type="dxa"/><w:vAlign w:val="center"/></w:tcPr>${official}</w:tc>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:bottom w:val="single" w:sz="10" w:color="D8B66F"/><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="7400"/></w:tblGrid><w:tr>${logoCell}${textCell}</w:tr></w:tbl>`;
+}
+
+function docxProgramMetaTableV14(data, fillable, nextId) {
+  const text = (tag, alias, value, placeholder = "اكتب هنا") => fillable ? docxContentControlV14({ id: nextId(), tag, alias, value, placeholder }) : docxFormParagraphV14(value || "", { style: "FieldValue", size: 19, spacingAfter: 0 });
+  const dropdown = (tag, alias, value, options) => fillable ? docxDropdownControlV14({ id: nextId(), tag, alias, value, options }) : docxFormParagraphV14(value || "", { style: "FieldValue", size: 19, spacingAfter: 0 });
+  const labels = programReportGenderLabels(data.schoolType);
+  const rows = [
+    ["اسم المدرسة", text("schoolName", "اسم المدرسة", data.schoolName), "نوع المدرسة", dropdown("schoolType", "نوع المدرسة", data.schoolType, ["بنين", "بنات"])],
+    ["اسم البرنامج أو الفعالية", text("programName", "اسم البرنامج أو الفعالية", data.programName), "مجال البرنامج", dropdown("domain", "مجال البرنامج", data.domain, programReportDomainsV14)],
+    ["الفئة المستهدفة", text("targetGroup", "الفئة المستهدفة", data.targetGroup), "عدد المستفيدين", text("beneficiaries", "عدد المستفيدين", data.beneficiaries, "اكتب العدد")],
+    ["تاريخ التنفيذ", text("executionDate", "تاريخ التنفيذ", data.executionDate, "اكتب التاريخ"), "مكان التنفيذ", text("location", "مكان التنفيذ", data.location, "اكتب المكان")],
+    [labels.executor, text("executor", labels.executor, data.executor, "اكتب الاسم أو الصفة"), "الشواهد المتوفرة", text("evidenceAvailable", "الشواهد المتوفرة", data.evidenceAvailable, "صور / حضور / إعلان / رابط / QR / أخرى")]
+  ];
+  return `<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="1850"/><w:gridCol w:w="2850"/><w:gridCol w:w="1850"/><w:gridCol w:w="2850"/></w:tblGrid>${rows.map((row) => `<w:tr>${docxProgramLabelCellV14(row[0],1850)}${docxProgramValueCellV14(row[1],2850)}${docxProgramLabelCellV14(row[2],1850)}${docxProgramValueCellV14(row[3],2850)}</w:tr>`).join("")}</w:tbl>`;
+}
+
+function docxEvidencePlaceholderTableV14(data, fillable, nextId) {
+  const evidenceDoc = getEvidenceDoc(evidenceWeek().id);
+  const typeOptions = evidenceTypeOptionsForSchool(data.schoolType);
+  const cells = [];
+  for (let i = 0; i < 4; i += 1) {
+    const meta = evidenceDoc.items[i] || { description: "", type: "صورة تنفيذ", note: "" };
+    const imageArea = docxFormParagraphV14(`مساحة الصورة / الشاهد ${i + 1}\n(يمكن إدراج صورة داخل هذه الخلية في Word)`, { style: "Hint", size: 16, color: "718582", center: true, spacingAfter: 50 });
+    const type = fillable ? docxDropdownControlV14({ id: nextId(), tag: `evidenceType${i+1}`, alias: `نوع الشاهد ${i+1}`, value: meta.type, options: typeOptions }) : docxFormParagraphV14(meta.type || "", { size: 16, spacingAfter: 0 });
+    const desc = fillable ? docxContentControlV14({ id: nextId(), tag: `evidenceDescription${i+1}`, alias: `وصف الشاهد ${i+1}`, value: meta.description === "شاهد تنفيذ" ? "" : meta.description, placeholder: "وصف مختصر للشاهد" }) : docxFormParagraphV14(meta.description || "", { size: 16, spacingAfter: 0 });
+    const note = fillable ? docxContentControlV14({ id: nextId(), tag: `evidenceNote${i+1}`, alias: `ملاحظة الشاهد ${i+1}`, value: meta.note, placeholder: "ملاحظة عند الحاجة" }) : docxFormParagraphV14(meta.note || "", { size: 16, spacingAfter: 0 });
+    cells.push(evidenceDocxRawCell(`${imageArea}${docxFormParagraphV14("نوع الشاهد",{bold:true,size:15,color:"075F5B",spacingAfter:10})}${type}${docxFormParagraphV14("الوصف",{bold:true,size:15,color:"075F5B",spacingAfter:10})}${desc}${docxFormParagraphV14("ملاحظة",{bold:true,size:15,color:"075F5B",spacingAfter:10})}${note}`, { width: 4700, fill: "FBFDFC", margin: 80 }));
+  }
+  return `<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="4700"/><w:gridCol w:w="4700"/></w:tblGrid><w:tr>${cells[0]}${cells[1]}</w:tr><w:tr>${cells[2]}${cells[3]}</w:tr></w:tbl>`;
+}
+
+async function buildProgramReportEvidenceWithImagesV14(week, data, imageInfo, docPrCounterRef) {
+  if (!imageInfo.length) return "";
+  const doc = ensureEvidenceItemMetadata(week.id);
+  const parts = [docxFormParagraphV14("شواهد التنفيذ", { style: "ReportTitle", bold: true, size: 28, color: "087F79", center: true, spacingAfter: 70, pageBreakBefore: true })];
+  for (let start = 0; start < imageInfo.length; start += 4) {
+    if (start > 0) parts.push(docxFormParagraphV14("شواهد التنفيذ - متابعة", { style: "SectionTitle", bold: true, size: 23, color: "087F79", center: true, spacingAfter: 60, pageBreakBefore: true }));
+    const subset = imageInfo.slice(start, start + 4);
+    const cells = [];
+    for (let i = 0; i < 4; i += 1) {
+      const globalIndex = start + i;
+      const info = subset[i];
+      if (!info) { cells.push(evidenceDocxRawCell(docxFormParagraphV14("مساحة شاهد إضافي", { size: 16, color: "8A9A98", center: true, spacingAfter: 0 }), { width: 4700, fill: "FBFDFC", margin: 70 })); continue; }
+      const meta = doc.items[globalIndex] || { description: "شاهد تنفيذ", type: "صورة تنفيذ", note: "" };
+      const fit = fitImageEmu(info.dims.width, info.dims.height, 3.05, 2.15);
+      const drawing = docxImageParagraphV6(info.relId, docPrCounterRef.value++, info.name, fit.cx, fit.cy);
+      const caption = `${docxFormParagraphV14(`الشاهد ${globalIndex + 1} — ${meta.description || "شاهد تنفيذ"}`, { bold: true, size: 16, color: "075F5B", center: true, spacingAfter: 15 })}${docxFormParagraphV14(`نوع الشاهد: ${meta.type || "صورة تنفيذ"}`, { size: 15, center: true, spacingAfter: 10 })}${meta.note ? docxFormParagraphV14(meta.note, { size: 14, color: "657A78", center: true, spacingAfter: 0 }) : ""}`;
+      cells.push(evidenceDocxRawCell(drawing + caption, { width: 4700, fill: "FBFDFC", margin: 65 }));
+    }
+    parts.push(`<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="4700"/><w:gridCol w:w="4700"/></w:tblGrid><w:tr>${cells[0]}${cells[1]}</w:tr><w:tr>${cells[2]}${cells[3]}</w:tr></w:tbl>`);
+  }
+  return parts.join("");
+}
+
+function programReportStylesXmlV14() {
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal" w:eastAsia="Tajawal"/><w:rtl/><w:lang w:bidi="ar-SA"/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="45" w:line="280" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:qFormat/></w:style><w:style w:type="paragraph" w:styleId="ReportTitle"><w:name w:val="عنوان التقرير"/><w:basedOn w:val="Normal"/><w:qFormat/><w:pPr><w:bidi/><w:jc w:val="center"/><w:spacing w:before="80" w:after="80"/></w:pPr><w:rPr><w:b/><w:bCs/><w:color w:val="075F5B"/><w:sz w:val="30"/><w:szCs w:val="30"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="SectionTitle"><w:name w:val="عنوان القسم"/><w:basedOn w:val="Normal"/><w:qFormat/><w:rPr><w:b/><w:bCs/><w:color w:val="087F79"/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="FieldLabel"><w:name w:val="تسمية الحقل"/><w:basedOn w:val="Normal"/><w:rPr><w:b/><w:bCs/><w:color w:val="075F5B"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="FieldValue"><w:name w:val="قيمة الحقل"/><w:basedOn w:val="Normal"/><w:rPr><w:color w:val="173F3D"/><w:sz w:val="19"/><w:szCs w:val="19"/></w:rPr></w:style><w:style w:type="paragraph" w:styleId="Hint"><w:name w:val="إرشاد"/><w:basedOn w:val="Normal"/><w:rPr><w:i/><w:iCs/><w:color w:val="718582"/><w:sz w:val="16"/><w:szCs w:val="16"/></w:rPr></w:style></w:styles>`;
+}
+
+async function exportProgramReportWord(week, { fillable = true } = {}) {
+  const data = programReportDisplayData(week);
+  const labels = programReportGenderLabels(data.schoolType);
+  setStatus(fillable ? "جارٍ تجهيز قالب Word القابل للتعبئة…" : "جارٍ تجهيز تقرير Word بالبيانات الحالية…");
+  let controlId = 140001;
+  const nextId = () => controlId++;
+  const relationships = [
+    `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`,
+    `<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" Target="settings.xml"/>`
+  ];
+  const mediaEntries = [];
+  let relCounter = 3;
+  const docPrCounterRef = { value: 1 };
+  let logoXml = "";
+  const logoDataUrl = state.report?.logoDataUrl || "";
+  const logoData = dataUrlToBytes(logoDataUrl);
+  if (logoData) {
+    const relId = `rId${relCounter++}`;
+    relationships.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/ministry-or-entity-logo.jpeg"/>`);
+    mediaEntries.push({ name: "word/media/ministry-or-entity-logo.jpeg", data: logoData.bytes });
+    const dims = await imageSizeFromDataUrl(logoDataUrl);
+    const fit = fitImageEmu(dims.width, dims.height, .9, .72);
+    logoXml = docxImageParagraphV6(relId, docPrCounterRef.value++, "شعار وزارة التعليم أو الجهة", fit.cx, fit.cy);
+  }
+
+  const evidenceImages = [];
+  if (!fillable) {
+    const photos = (evidenceCache[week.id] || []).slice(0, MAX_EVIDENCE_PER_WEEK_V13);
+    for (let i = 0; i < photos.length; i += 1) {
+      const imageData = dataUrlToBytes(photos[i].dataUrl);
+      if (!imageData) continue;
+      const relId = `rId${relCounter++}`;
+      const fileName = `program-report-evidence-${i+1}.jpeg`;
+      relationships.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fileName}"/>`);
+      mediaEntries.push({ name: `word/media/${fileName}`, data: imageData.bytes });
+      const dims = await imageSizeFromDataUrl(photos[i].dataUrl);
+      evidenceImages.push({ relId, dims, name: photos[i].name || `شاهد ${i+1}` });
+    }
+  }
+
+  const field = (tag, alias, value, placeholder, multiline = true) => fillable
+    ? docxContentControlV14({ id: nextId(), tag, alias, value, placeholder, multiline })
+    : docxFormParagraphV14(value || "", { style: "FieldValue", size: 19, spacingAfter: 0 });
+
+  const parts = [];
+  parts.push(docxProgramHeaderV14(logoXml, data.schoolName));
+  parts.push(docxFormParagraphV14(data.programName ? `تقرير تنفيذ برنامج ${data.programName}` : "تقرير تنفيذ برنامج", { style: "ReportTitle", bold: true, size: 30, color: "075F5B", center: true, spacingAfter: 75 }));
+  if (fillable) parts.push(docxFormParagraphV14("هذا المستند قالب Word قابل للتعبئة يدويًا. انقر داخل الحقول المظللة والقوائم المنسدلة لتعديلها.", { style: "Hint", size: 15, color: "647B78", center: true, spacingAfter: 65 }));
+  parts.push(docxProgramMetaTableV14(data, fillable, nextId));
+  parts.push(docxFormParagraphV14("", { spacingAfter: 55 }));
+
+  const sections = [
+    ["الأهداف", "goals", "أهداف البرنامج", data.goals, "اكتب أهداف البرنامج أو الصقها هنا"],
+    ["خطوات وآلية التنفيذ", "mechanism", "آلية التنفيذ", data.mechanism, "اكتب ما تم تنفيذه باختصار ووضوح"],
+    ["الأنشطة المنفذة", "activities", "الأنشطة المنفذة", data.activities, "اكتب الأنشطة المنفذة فعليًا"],
+    ["النتائج والمخرجات", "results", "النتائج والمخرجات", data.results, "اكتب النتائج الفعلية فقط"],
+    ["أبرز نقاط القوة", "strengths", "أبرز نقاط القوة", data.strengths, "اتركه فارغًا إذا لم تتوفر بيانات"],
+    ["التوصيات والتحسينات المقترحة", "recommendations", "التوصيات والتحسينات", data.recommendations, "اكتب التوصيات أو التحسينات"]
+  ];
+  sections.forEach(([title, tag, alias, value, placeholder]) => {
+    parts.push(docxProgramSectionV14(title, field(tag, alias, value, placeholder, true)));
+    parts.push(docxFormParagraphV14("", { spacingAfter: 45 }));
+  });
+
+  const impactInner = `<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="2100"/><w:gridCol w:w="7300"/></w:tblGrid><w:tr>${docxProgramLabelCellV14("أداة القياس",2100)}${docxProgramValueCellV14(field("impactTool","أداة قياس الأثر",data.impactTool,"اتركه فارغًا إذا لم تتوفر أداة",false),7300)}</w:tr><w:tr>${docxProgramLabelCellV14("النتيجة",2100)}${docxProgramValueCellV14(field("impactResult","نتيجة قياس الأثر",data.impactResult,"اتركه فارغًا إذا لم تتوفر نتيجة فعلية",true),7300)}</w:tr><w:tr>${docxProgramLabelCellV14("رابط / QR",2100)}${docxProgramValueCellV14(field("evidenceLink", "رابط أو بيانات QR", data.evidenceLink, "ألصق الرابط أو بيانات QR هنا", true),7300)}</w:tr></w:tbl>`;
+  parts.push(docxProgramSectionV14("قياس الأثر والروابط", impactInner, { fill: "FFFFFF" }));
+  parts.push(docxFormParagraphV14("", { spacingAfter: 35 }));
+
+  if (fillable) {
+    parts.push(docxFormParagraphV14("شواهد التنفيذ", { style: "ReportTitle", bold: true, size: 28, color: "087F79", center: true, spacingAfter: 45, pageBreakBefore: true }));
+    parts.push(docxFormParagraphV14("أضف الصور أو الأدلة داخل الخلايا التالية، ثم اختر نوع الشاهد من القائمة المنسدلة واكتب وصفًا مختصرًا فقط.", { style: "Hint", size: 15, color: "647B78", center: true, spacingAfter: 55 }));
+    parts.push(docxEvidencePlaceholderTableV14(data, true, nextId));
+  } else if (evidenceImages.length) {
+    parts.push(await buildProgramReportEvidenceWithImagesV14(week, data, evidenceImages, docPrCounterRef));
+  } else {
+    parts.push(docxFormParagraphV14("شواهد التنفيذ", { style: "ReportTitle", bold: true, size: 28, color: "087F79", center: true, spacingAfter: 45, pageBreakBefore: true }));
+    parts.push(docxEvidencePlaceholderTableV14(data, false, nextId));
+  }
+
+  parts.push(docxFormParagraphV14("", { spacingAfter: 55 }));
+  const signText = fillable ? docxContentControlV14({ id: nextId(), tag: "signature", alias: labels.signature, value: data.signature, placeholder: "الاسم / التوقيع" }) : docxFormParagraphV14(data.signature || data.executor || "", { size: 18, spacingAfter: 0 });
+  const dateText = fillable ? docxContentControlV14({ id: nextId(), tag: "footerDate", alias: "التاريخ", value: data.footerDate, placeholder: "التاريخ" }) : docxFormParagraphV14(data.footerDate || "", { size: 18, spacingAfter: 0 });
+  parts.push(`<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="1800"/><w:gridCol w:w="2900"/><w:gridCol w:w="1800"/><w:gridCol w:w="2900"/></w:tblGrid><w:tr>${docxProgramLabelCellV14(labels.signature,1800)}${docxProgramValueCellV14(signText,2900)}${docxProgramLabelCellV14("التاريخ",1800)}${docxProgramValueCellV14(dateText,2900)}</w:tr></w:tbl>`);
+  parts.push(docxFormParagraphV14("أ/ فاطمة هزازي — ملتقى التعليم التفاعلي", { bold: true, size: 15, color: "087F79", center: true, spacingAfter: 0 }));
+
+  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${parts.join("")}<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="560" w:right="620" w:bottom="560" w:left="620" w:header="300" w:footer="300" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const stylesXml = programReportStylesXmlV14();
+  const settingsXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:settings xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:defaultTabStop w:val="720"/><w:themeFontLang w:val="ar-SA" w:bidi="ar-SA"/><w:compat><w:compatSetting w:name="compatibilityMode" w:uri="http://schemas.microsoft.com/office/word" w:val="15"/></w:compat></w:settings>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
+  const reportTitle = data.programName ? `تقرير تنفيذ برنامج ${data.programName}` : "تقرير تنفيذ برنامج مدرسي";
+  const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(reportTitle)}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>14.0</AppVersion></Properties>`;
+  const entries = [
+    { name: "[Content_Types].xml", data: contentTypes },
+    { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` },
+    { name: "word/document.xml", data: documentXml },
+    { name: "word/styles.xml", data: stylesXml },
+    { name: "word/settings.xml", data: settingsXml },
+    { name: "word/_rels/document.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>` },
+    { name: "docProps/core.xml", data: coreXml },
+    { name: "docProps/app.xml", data: appXml },
+    ...mediaEntries
+  ];
+  const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  const kind = fillable ? "قالب-قابل-للتعبئة" : "تقرير-مكتمل";
+  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v14.docx`);
+  setStatus(fillable ? "تم تجهيز قالب Word القابل للتعبئة" : "تم تجهيز تقرير Word بالبيانات الحالية");
+  toast(fillable ? "تم إنشاء DOCX حقيقي بحقـول تعبئة وقوائم Word منسدلة" : "تم إنشاء تقرير DOCX حقيقي بالبيانات الحالية");
 }

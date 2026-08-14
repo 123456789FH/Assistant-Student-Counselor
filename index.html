@@ -7,7 +7,7 @@
   <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
   <meta name="referrer" content="no-referrer" />
-  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٣</title>
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٤</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
@@ -38,6 +38,7 @@
         <button class="btn" id="printFinalReportBtn" type="button">📄 التقرير الختامي</button>
         <button class="btn btn--soft" id="reportSettingsBtn" type="button">⚙️ إعدادات التقرير</button>
         <button class="btn btn--evidence" id="evidenceStudioBtn" type="button">📷 نموذج شواهد التنفيذ</button>
+        <button class="btn btn--report-form" id="programReportStudioBtn" type="button">🧾 تقرير تنفيذ برنامج</button>
 
         <details class="export-menu" id="exportMenu">
           <summary class="btn">📤 تصدير / استيراد</summary>
@@ -76,6 +77,7 @@
           <span>📊 قياس أثر</span>
           <span>🧾 مساعد التوثيق</span>
           <span>📷 شواهد تنفيذ A4</span>
+          <span>🧩 Word قابل للتعبئة</span>
         </div>
       </section>
 
@@ -116,7 +118,7 @@
             <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
             <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
           </div>
-          <span class="version-chip">الإصدار ١٣</span>
+          <span class="version-chip">الإصدار ١٤</span>
         </div>
         <div class="week-navigator" aria-label="التنقل بين الأسابيع">
           <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
@@ -128,6 +130,75 @@
           <div class="week-nav-progress" id="weekNavProgress" aria-live="polite"></div>
         </div>
         <div id="weekWorkspace" class="week-workspace" aria-live="polite"></div>
+      </section>
+
+
+      <section class="program-report-section" id="programReportSection" aria-labelledby="programReportTitle">
+        <div class="section-title program-report-title">
+          <div>
+            <span class="eyebrow">نموذج Word ذكي وقابل للتعبئة</span>
+            <h2 id="programReportTitle">تقرير تنفيذ برنامج مدرسي</h2>
+            <p class="section-description">أنشئ تقريرًا مدرسيًا احترافيًا من بياناتك الفعلية، أو صدّر قالب DOCX مستقلًا يحتوي على جداول Word أصلية وحقول تعبئة وقوائم منسدلة حقيقية داخل Microsoft Word.</p>
+          </div>
+          <span class="program-report-chip" id="programReportWeekChip">الأسبوع</span>
+        </div>
+
+        <div class="program-report-shell">
+          <div class="program-report-card">
+            <div class="program-report-head">
+              <div><strong>بيانات تقرير تنفيذ البرنامج</strong><small>لا تُنشأ أسماء أو أرقام أو نتائج تلقائيًا. الحقول الفارغة تبقى قابلة للتعبئة يدويًا داخل Word.</small></div>
+              <button class="btn btn--soft" id="programReportCopyWeekBtn" type="button">↙ تعبئة من بيانات الأسبوع</button>
+            </div>
+
+            <div class="program-report-grid">
+              <label><span>اسم المدرسة</span><input id="programReportSchoolName" type="text" maxlength="120" placeholder="اكتب اسم المدرسة" /></label>
+              <label><span>نوع المدرسة</span><select id="programReportSchoolType"><option value="">اختر</option><option value="بنين">بنين</option><option value="بنات">بنات</option></select></label>
+              <label class="wide"><span>اسم البرنامج أو الفعالية</span><input id="programReportProgramName" type="text" maxlength="300" placeholder="مثال: اليوم العالمي للتطوع" /></label>
+              <label><span>مجال البرنامج</span><select id="programReportDomain"><option value="">اختر المجال</option><option>نشاط طلابي</option><option>توجيه طلابي</option><option>توعوي</option><option>تعليمي</option><option>مجتمعي</option><option>أخرى</option></select></label>
+              <label><span>الفئة المستهدفة</span><input id="programReportTargetGroup" type="text" maxlength="220" placeholder="مثال: طلاب الصف الأول المتوسط" /></label>
+              <label><span>تاريخ التنفيذ</span><input id="programReportExecutionDate" type="text" maxlength="80" placeholder="اكتب التاريخ" /></label>
+              <label><span>مكان التنفيذ</span><input id="programReportLocation" type="text" maxlength="180" placeholder="مثال: المسرح المدرسي" /></label>
+              <label><span id="programReportExecutorLabel">منفذ البرنامج</span><input id="programReportExecutor" type="text" maxlength="200" placeholder="الاسم أو الصفة" /></label>
+              <label><span>عدد المستفيدين</span><input id="programReportBeneficiaries" type="text" inputmode="numeric" maxlength="60" placeholder="اكتب العدد" /></label>
+
+              <label class="wide"><span>🎯 أهداف البرنامج</span><textarea id="programReportGoals" maxlength="1800" placeholder="ألصق الأهداف أو اكتبها كما هي"></textarea></label>
+              <label class="wide"><span>⚙️ آلية التنفيذ</span><textarea id="programReportMechanism" maxlength="2200" placeholder="اكتب باختصار ما تم تنفيذه"></textarea></label>
+              <label class="wide"><span>🎨 الأنشطة المنفذة</span><textarea id="programReportActivities" maxlength="1800" placeholder="ألصق الأنشطة المنفذة فعليًا"></textarea></label>
+              <label class="wide"><span>📊 النتائج والمخرجات</span><textarea id="programReportResults" maxlength="1800" placeholder="اكتب النتائج الفعلية فقط"></textarea></label>
+              <label class="wide"><span>⭐ أبرز نقاط القوة</span><textarea id="programReportStrengths" maxlength="1400" placeholder="اتركها فارغة إذا لم تتوفر بيانات"></textarea></label>
+              <label class="wide"><span>📝 التوصيات والتحسينات المقترحة</span><textarea id="programReportRecommendations" maxlength="1400" placeholder="اكتب التوصيات الفعلية أو المقترحة"></textarea></label>
+              <label class="wide"><span>📷 الشواهد المتوفرة</span><input id="programReportEvidenceAvailable" type="text" maxlength="700" placeholder="صور / كشف حضور / أعمال طلاب / إعلان / رابط / QR / أخرى" /></label>
+              <label class="wide"><span>🔗 رابط أو بيانات QR عند توفرها</span><input id="programReportEvidenceLink" type="text" maxlength="700" placeholder="ألصق الرابط أو النص المراد تحويله إلى QR لاحقًا" /></label>
+              <label><span>📈 أداة قياس الأثر</span><input id="programReportImpactTool" type="text" maxlength="500" placeholder="مثال: استبانة / ملاحظة / بطاقة قياس" /></label>
+              <label><span>نتيجة قياس الأثر</span><input id="programReportImpactResult" type="text" maxlength="900" placeholder="اتركها فارغة إذا لم تتوفر نتيجة فعلية" /></label>
+              <label><span id="programReportSignatureLabel">اسم المنفذ والتوقيع</span><input id="programReportSignature" type="text" maxlength="220" placeholder="الاسم / مكان للتوقيع" /></label>
+              <label><span>التاريخ</span><input id="programReportFooterDate" type="text" maxlength="80" placeholder="التاريخ" /></label>
+            </div>
+
+            <div class="program-report-actions">
+              <button class="btn btn--primary" id="exportFillableProgramReportBtn" type="button">🧩 Word قالب قابل للتعبئة</button>
+              <button class="btn" id="exportFilledProgramReportBtn" type="button">📝 Word بالبيانات الحالية</button>
+              <button class="btn btn--soft" id="programReportEvidenceBtn" type="button">📷 فتح شواهد التنفيذ</button>
+            </div>
+            <div class="program-report-tech-note">
+              <strong>تقنيًا:</strong> ملف القالب يُبنى مباشرة بصيغة Office Open XML؛ الجداول عناصر <code>w:tbl</code> حقيقية، وحقول الكتابة عناصر Content Controls <code>w:sdt</code>، ونوع المدرسة والمجال ونوع الشاهد قوائم Word منسدلة فعلية. لا يتم إدراج جدول HTML داخل Word.
+            </div>
+            <p class="program-report-logo-guidance">🏛️ للشكل الرسمي: ارفعي شعار وزارة التعليم/الجهة المعتمد من «إعدادات التقرير». عند عدم رفعه يترك القالب مساحة واضحة للشعار بدل استخدام شعار غير رسمي.</p>
+          </div>
+
+          <aside class="program-report-preview" aria-live="polite">
+            <div class="program-report-preview-head"><div><span class="eyebrow">جاهزية التقرير</span><strong id="programReportPreviewTitle">تقرير تنفيذ برنامج</strong></div><span id="programReportReadiness">٠٪</span></div>
+            <div id="programReportPreviewBody" class="program-report-preview-body"></div>
+            <div class="program-report-feature-list">
+              <span>✓ A4 عمودي وRTL</span>
+              <span>✓ جداول Word أصلية</span>
+              <span>✓ حقول تعبئة يدوية</span>
+              <span>✓ قوائم Word منسدلة</span>
+              <span>✓ أنماط قابلة للتعديل الجماعي</span>
+              <span>✓ شواهد وصور من الجلسة عند التصدير المكتمل</span>
+            </div>
+          </aside>
+        </div>
       </section>
 
       <section class="evidence-studio-section" id="evidenceStudioSection" aria-labelledby="evidenceStudioTitle">
@@ -191,7 +262,7 @@
     <footer class="footer">
       <strong>أ/ فاطمة هزازي</strong>
       <span>•</span>
-      <span>مساعد الموجه الطلابي — الإصدار ١٣</span>
+      <span>مساعد الموجه الطلابي — الإصدار ١٤</span>
     </footer>
   </div>
 

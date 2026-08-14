@@ -1,0 +1,22 @@
+رفع الإصدار ١٤ إلى GitHub Pages
+================================
+
+استبدل/ارفع ملفات الإصدار الحالي بهذه الملفات:
+- index.html
+- app.js
+- styles.css
+- manifest.webmanifest
+- service-worker.js
+- forum-logo.png
+- icon-192.png
+- icon-512.png
+
+وتأكد من بقاء الخطوط في:
+assets/fonts/Tajawal-Regular.ttf
+assets/fonts/Tajawal-Bold.ttf
+assets/fonts/OFL-tajawal.txt
+
+مهم:
+- استبدال service-worker.js ضروري لتحديث اسم الكاش إلى الإصدار ١٤.
+- لا ترفع node_modules؛ التطبيق المنشور لا يحتاجه.
+- لإظهار شعار وزارة التعليم/الجهة في تقارير Word، ارفع الشعار الرسمي من «إعدادات التقرير» داخل التطبيق.
