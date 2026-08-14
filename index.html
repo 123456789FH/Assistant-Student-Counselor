@@ -7,7 +7,7 @@
   <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
   <meta name="referrer" content="no-referrer" />
-  <title>مساعد الموجه الطلابي | الخطة التفاعلية</title>
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٢</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
@@ -45,7 +45,7 @@
             <button type="button" id="importJsonBtn">JSON ⬆️ استيراد</button>
             <button type="button" id="exportExcelBtn">Excel احترافي (.xlsx) — المعبأة فقط</button>
             <button type="button" id="exportWordBtn">Word (.docx) — المعبأة فقط</button>
-            <small>Word وExcel يصدّران الأسابيع المعبأة فقط ويضمّنان صور الشواهد الموجودة في الجلسة الحالية. Excel مهيأ RTL والطباعة A4 وصفحة واحدة قدر الإمكان. JSON لا يتضمن الصور.</small>
+            <small>Word وExcel يصدّران الأسابيع المعبأة فقط ويضمّنان صور الشواهد الحالية. Word يضع كل أسبوع في صفحة مستقلة بتنسيق رسمي، وExcel يضع كل أسبوع في ورقة مستقلة RTL مهيأة للطباعة A4. JSON لا يتضمن الصور.</small>
           </div>
         </details>
 
@@ -65,7 +65,7 @@
         <div>
           <span class="eyebrow">هوية الخطة</span>
           <h2>«أثري يبدأ مني»</h2>
-          <p>لكل أسبوع برامج وفعاليات وقيمة مستهدفة، مع أفكار تنفيذية، متابعة الإنجاز، قياس الأثر، وتجهيز منظم للبيانات التي يحتاجها الموجه عند التوثيق الرسمي.</p>
+          <p>كل أسبوع يفتح في مساحة مستقلة وواضحة تضم أيامه وتواريخه وخطتك اليومية، ثم البرامج والقيم والمتابعة والتوثيق والتصدير الاحترافي.</p>
         </div>
         <div class="legend" aria-label="دليل الرموز">
           <span>🎯 برامج</span>
@@ -107,32 +107,32 @@
         </div>
       </section>
 
-      <section class="table-section" aria-labelledby="planTitle">
-        <div class="section-title">
+      <section class="week-workspace-section" aria-labelledby="weeklyWorkspaceTitle">
+        <div class="section-title week-workspace-title">
           <div>
-            <span class="eyebrow">الخطة الأسبوعية</span>
-            <h2 id="planTitle">الأسابيع السبعة</h2>
+            <span class="eyebrow">مساحة العمل الأسبوعية</span>
+            <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
+            <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
           </div>
-          <span class="hint">اضغطي على الأفكار أو متابعة الأسبوع لإظهار التفاصيل</span>
+          <span class="version-chip">الإصدار ١٢</span>
         </div>
-        <div class="table-wrap">
-          <div id="planTable" class="plan-table" role="table" aria-label="الخطة الأسبوعية التفاعلية"></div>
+        <div class="week-navigator" aria-label="التنقل بين الأسابيع">
+          <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
+          <label class="week-select-wrap" for="weekSelector">
+            <span>اختيار الأسبوع</span>
+            <select id="weekSelector" aria-label="اختيار الأسبوع"></select>
+          </label>
+          <button class="week-nav-btn" id="prevWeekBtn" type="button" aria-label="الأسبوع السابق">→ السابق</button>
+          <div class="week-nav-progress" id="weekNavProgress" aria-live="polite"></div>
         </div>
-      </section>
-
-      <section class="mobile-section" aria-labelledby="cardsTitle">
-        <div class="section-title">
-          <div>
-            <span class="eyebrow">عرض مريح للجوال</span>
-            <h2 id="cardsTitle">بطاقات الأسابيع</h2>
-          </div>
-        </div>
-        <div id="weekCards" class="week-cards"></div>
+        <div id="weekWorkspace" class="week-workspace" aria-live="polite"></div>
       </section>
     </main>
 
     <footer class="footer">
       <strong>أ/ فاطمة هزازي</strong>
+      <span>•</span>
+      <span>مساعد الموجه الطلابي — الإصدار ١٢</span>
     </footer>
   </div>
 

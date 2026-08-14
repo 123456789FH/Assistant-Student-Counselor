@@ -197,7 +197,7 @@ const weeks = [
 
 const storageKey = "interactive-guidance-plan-v1";
 const exportSchema = "student-counselor-assistant";
-const exportVersion = 4;
+const exportVersion = 6;
 const evidenceCache = {};
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_EVIDENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -214,6 +214,8 @@ function blankState() {
     completed: {},
     indicators: {},
     noor: {},
+    dayPlans: {},
+    activeWeekId: 1,
     report: {
       userName: "",
       principalName: "",
@@ -240,7 +242,9 @@ function loadState() {
       custom: parsed?.custom && typeof parsed.custom === "object" ? parsed.custom : {},
       completed: parsed?.completed && typeof parsed.completed === "object" ? parsed.completed : {},
       indicators: parsed?.indicators && typeof parsed.indicators === "object" ? parsed.indicators : {},
-      noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {}
+      noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {},
+      dayPlans: parsed?.dayPlans && typeof parsed.dayPlans === "object" ? parsed.dayPlans : {},
+      activeWeekId: weeks.some((week) => week.id === Number(parsed?.activeWeekId)) ? Number(parsed.activeWeekId) : 1
     };
   } catch {
     return blankState();
@@ -307,6 +311,116 @@ function safeFileBase(value = "تقرير") {
   const cleaned = safeString(value, 80).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
   return cleaned || "تقرير";
 }
+
+const guidanceWeekdays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"];
+
+function toWesternDigits(value = "") {
+  return String(value)
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
+}
+
+function parseHijriLabel(value = "") {
+  const match = toWesternDigits(value).match(/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/);
+  return match ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) } : null;
+}
+
+function formatHijriLabel(year, month, day) {
+  const western = `${String(year).padStart(4, "0")}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}هـ`;
+  return arNum(western);
+}
+
+function getWeekDays(week) {
+  const start = parseHijriLabel(week?.dates?.[0]);
+  const end = parseHijriLabel(week?.dates?.[1]);
+  if (!start || !end) {
+    return guidanceWeekdays.map((name, index) => ({ name, date: index === 0 ? (week?.dates?.[0] || "—") : index === 4 ? (week?.dates?.[1] || "—") : "—" }));
+  }
+  if (start.year === end.year && start.month === end.month && end.day >= start.day) {
+    return guidanceWeekdays.map((name, index) => ({ name, date: formatHijriLabel(start.year, start.month, start.day + index) }));
+  }
+  return guidanceWeekdays.map((name, index) => ({ name, date: index === 0 ? week.dates[0] : index === 4 ? week.dates[1] : "—" }));
+}
+
+function dayPlanKey(weekId, dayIndex) {
+  return `w${Number(weekId)}-day-${Number(dayIndex)}`;
+}
+
+function getDayPlan(weekId, dayIndex) {
+  const raw = state.dayPlans?.[dayPlanKey(weekId, dayIndex)] || {};
+  return {
+    activity: safeString(raw.activity, 240),
+    objective: safeString(raw.objective, 320),
+    details: safeString(raw.details, 1800),
+    notes: safeString(raw.notes, 900),
+    done: Boolean(raw.done)
+  };
+}
+
+function setDayPlanField(weekId, dayIndex, field, value) {
+  const key = dayPlanKey(weekId, dayIndex);
+  state.dayPlans[key] ||= {};
+  if (field === "done") state.dayPlans[key].done = Boolean(value);
+  else {
+    const limits = { activity: 240, objective: 320, details: 1800, notes: 900 };
+    state.dayPlans[key][field] = safeString(value, limits[field] || 1000);
+  }
+  persistState();
+}
+
+function dayPlanHasContent(plan) {
+  return Boolean(plan.done || plan.activity.trim() || plan.objective.trim() || plan.details.trim() || plan.notes.trim());
+}
+
+function getWeekDailyStats(weekId) {
+  const plans = guidanceWeekdays.map((_, index) => getDayPlan(weekId, index));
+  const planned = plans.filter(dayPlanHasContent).length;
+  const done = plans.filter((plan) => plan.done).length;
+  return { planned, done, total: guidanceWeekdays.length };
+}
+
+function getAllDailyPlanStats() {
+  return weeks.reduce((acc, week) => {
+    const stats = getWeekDailyStats(week.id);
+    acc.planned += stats.planned;
+    acc.done += stats.done;
+    acc.total += stats.total;
+    return acc;
+  }, { planned: 0, done: 0, total: 0 });
+}
+
+
+function getWeekReadiness(week) {
+  const daily = getWeekDailyStats(week.id);
+  const record = getNoorRecord(week.id);
+  const indicator = getIndicator(week.id);
+  let score = (daily.planned / Math.max(1, daily.total)) * 40;
+  if (selectedIdeasForWeek(week).length) score += 10;
+  const reportFields = [record.program, record.targetGroup, record.beneficiaries, record.participants, record.procedure, record.evidenceText];
+  score += reportFields.filter((value) => String(value || "").trim()).length * 5;
+  const indicatorFields = [indicator.participation, indicator.achievement, indicator.satisfaction, indicator.impactNote];
+  score += indicatorFields.filter((value) => String(value ?? "").trim() !== "").length * 5;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function readinessLabel(score) {
+  if (score >= 85) return "جاهز للتوثيق";
+  if (score >= 60) return "قريب من الاكتمال";
+  if (score >= 30) return "قيد الإعداد";
+  return "بداية التخطيط";
+}
+
+function dailyPlansForWeek(week) {
+  return getWeekDays(week).map((day, index) => ({ ...day, ...getDayPlan(week.id, index), index }));
+}
+
+function dailyPlanSummaryText(week) {
+  return dailyPlansForWeek(week)
+    .filter((day) => dayPlanHasContent(day))
+    .map((day) => `${day.name} ${day.date}: ${day.activity || "خطة يومية"}${day.details ? ` — ${day.details}` : ""}${day.done ? " (تم التنفيذ)" : ""}`)
+    .join(" • ");
+}
+
 
 function downloadBlob(content, mime, filename) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
@@ -393,6 +507,7 @@ function buildNoorSummaryText(week) {
     `مدير المدرسة: ${state.report?.principalName || "—"}`,
     `الأسبوع: ${week.title} — ${week.theme}`,
     `الفترة: ${week.dates[0]} إلى ${week.dates[1]}`,
+    `الخطة اليومية: ${dailyPlanSummaryText(week) || "—"}`,
     `البرنامج: ${chosenProgram}`,
     `القيمة المستهدفة: ${week.value}`,
     `الفئة المستهدفة: ${record.targetGroup || "—"}`,
@@ -951,6 +1066,311 @@ function renderWeekCards() {
   });
 }
 
+
+function updateDailyPlanProgress(weekId) {
+  const stats = getWeekDailyStats(weekId);
+  document.querySelectorAll(`[data-daily-progress-week="${weekId}"]`).forEach((el) => {
+    el.textContent = `${arNum(stats.planned)} من ${arNum(stats.total)} أيام مخططة • ${arNum(stats.done)} منفذة`;
+  });
+  const week = weeks.find((item) => item.id === Number(weekId));
+  if (week) {
+    const readiness = getWeekReadiness(week);
+    document.querySelectorAll(`[data-readiness-week="${weekId}"]`).forEach((el) => {
+      el.textContent = `${arNum(readiness)}٪ — ${readinessLabel(readiness)}`;
+    });
+    document.querySelectorAll(`[data-readiness-bar="${weekId}"]`).forEach((el) => {
+      el.style.width = `${readiness}%`;
+    });
+  }
+  syncWeekNavigatorUI();
+}
+
+function createDailyField(labelText, value, placeholder, { wide = false, textarea = false, maxLength = 600, onInput } = {}) {
+  const label = document.createElement("label");
+  if (wide) label.classList.add("wide");
+  const span = document.createElement("span");
+  span.textContent = labelText;
+  const field = document.createElement(textarea ? "textarea" : "input");
+  if (!textarea) field.type = "text";
+  field.maxLength = maxLength;
+  field.placeholder = placeholder;
+  field.value = value || "";
+  field.addEventListener("input", () => onInput?.(field.value));
+  label.append(span, field);
+  return label;
+}
+
+function renderDailyPlanner(week) {
+  const section = document.createElement("section");
+  section.className = "daily-planner";
+
+  const head = document.createElement("div");
+  head.className = "daily-planner__head";
+  const copy = document.createElement("div");
+  copy.innerHTML = '<span class="eyebrow">التخطيط اليومي</span><h4>خطة أيام الأسبوع</h4>';
+  const progress = document.createElement("span");
+  progress.className = "daily-progress-pill";
+  progress.dataset.dailyProgressWeek = String(week.id);
+  head.append(copy, progress);
+
+  const grid = document.createElement("div");
+  grid.className = "day-plan-grid";
+  dailyPlansForWeek(week).forEach((day) => {
+    const card = document.createElement("article");
+    card.className = `day-plan-card${day.done ? " is-done" : ""}`;
+
+    const cardHead = document.createElement("div");
+    cardHead.className = "day-plan-head";
+    const title = document.createElement("div");
+    title.className = "day-title";
+    const badge = document.createElement("span");
+    badge.className = "day-index";
+    badge.textContent = arNum(day.index + 1);
+    const titleText = document.createElement("div");
+    const strong = document.createElement("strong");
+    strong.textContent = day.name;
+    const small = document.createElement("small");
+    small.textContent = day.date;
+    titleText.append(strong, small);
+    title.append(badge, titleText);
+
+    const dayActions = document.createElement("div");
+    dayActions.className = "day-head-actions";
+    if (day.index > 0) {
+      const copyPrevious = document.createElement("button");
+      copyPrevious.type = "button";
+      copyPrevious.className = "day-copy-btn";
+      copyPrevious.textContent = "↳ نسخ السابق";
+      copyPrevious.title = "نسخ محتوى اليوم السابق إلى هذا اليوم";
+      copyPrevious.addEventListener("click", () => {
+        const previous = getDayPlan(week.id, day.index - 1);
+        if (!dayPlanHasContent(previous)) {
+          toast("اليوم السابق لا يحتوي خطة لنسخها");
+          return;
+        }
+        state.dayPlans[dayPlanKey(week.id, day.index)] = {
+          activity: previous.activity,
+          objective: previous.objective,
+          details: previous.details,
+          notes: previous.notes,
+          done: false
+        };
+        persistState("تم نسخ خطة اليوم السابق");
+        renderWeekWorkspace();
+        refreshDynamicUI();
+      });
+      dayActions.appendChild(copyPrevious);
+    }
+
+    const doneLabel = document.createElement("label");
+    doneLabel.className = "day-done-toggle";
+    const done = document.createElement("input");
+    done.type = "checkbox";
+    done.checked = day.done;
+    const doneText = document.createElement("span");
+    doneText.textContent = "تم تنفيذ خطة اليوم";
+    done.addEventListener("change", () => {
+      setDayPlanField(week.id, day.index, "done", done.checked);
+      card.classList.toggle("is-done", done.checked);
+      updateDailyPlanProgress(week.id);
+      renderDashboard();
+    });
+    doneLabel.append(done, doneText);
+    dayActions.appendChild(doneLabel);
+    cardHead.append(title, dayActions);
+
+    const fields = document.createElement("div");
+    fields.className = "day-plan-fields";
+    const saveField = (fieldName) => (value) => {
+      setDayPlanField(week.id, day.index, fieldName, value);
+      updateDailyPlanProgress(week.id);
+      renderDashboard();
+    };
+    fields.append(
+      createDailyField("البرنامج / النشاط", day.activity, "مثال: لقاء توعوي أو مبادرة أو متابعة…", { maxLength: 240, onInput: saveField("activity") }),
+      createDailyField("الهدف اليومي", day.objective, "ما الهدف الذي تريد تحقيقه اليوم؟", { maxLength: 320, onInput: saveField("objective") }),
+      createDailyField("خطة التنفيذ", day.details, "اكتب خطوات التنفيذ أو ما ستقوم به خلال هذا اليوم بصورة واضحة…", { wide: true, textarea: true, maxLength: 1800, onInput: saveField("details") }),
+      createDailyField("ملاحظات اليوم", day.notes, "ملاحظة مختصرة أو متابعة مطلوبة…", { wide: true, textarea: true, maxLength: 900, onInput: saveField("notes") })
+    );
+
+    card.append(cardHead, fields);
+    grid.appendChild(card);
+  });
+
+  section.append(head, grid);
+  queueMicrotask(() => updateDailyPlanProgress(week.id));
+  return section;
+}
+
+function syncWeekNavigatorUI() {
+  const activeId = weeks.some((week) => week.id === Number(state.activeWeekId)) ? Number(state.activeWeekId) : weeks[0].id;
+  const index = weeks.findIndex((week) => week.id === activeId);
+  const selector = document.querySelector("#weekSelector");
+  if (selector) selector.value = String(activeId);
+  const prev = document.querySelector("#prevWeekBtn");
+  const next = document.querySelector("#nextWeekBtn");
+  if (prev) prev.disabled = index <= 0;
+  if (next) next.disabled = index >= weeks.length - 1;
+  const progress = document.querySelector("#weekNavProgress");
+  if (progress) {
+    const stats = getWeekDailyStats(activeId);
+    const complete = Boolean(state.completed[completionKey(activeId)]);
+    const week = weeks[index] || weeks[0];
+    const readiness = getWeekReadiness(week);
+    progress.innerHTML = `<span>${week?.title || "الأسبوع"} من ${arNum(weeks.length)}</span><strong>جاهزية التوثيق ${arNum(readiness)}٪</strong><span>${arNum(stats.planned)}/${arNum(stats.total)} أيام مخططة${complete ? " • ✓ تم التنفيذ" : ""}</span>`;
+  }
+}
+
+function setActiveWeek(weekId) {
+  const normalized = weeks.some((week) => week.id === Number(weekId)) ? Number(weekId) : weeks[0].id;
+  if (state.activeWeekId === normalized) return;
+  state.activeWeekId = normalized;
+  persistState();
+  renderWeekWorkspace();
+  refreshDynamicUI();
+  document.querySelector("#weekWorkspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function wireWeekNavigator() {
+  const selector = document.querySelector("#weekSelector");
+  if (selector) {
+    selector.innerHTML = "";
+    weeks.forEach((week) => {
+      const option = document.createElement("option");
+      option.value = String(week.id);
+      option.textContent = `${week.title} — ${week.theme} — ${week.dates[0]} إلى ${week.dates[1]}`;
+      selector.appendChild(option);
+    });
+    selector.addEventListener("change", () => setActiveWeek(Number(selector.value)));
+  }
+  document.querySelector("#prevWeekBtn")?.addEventListener("click", () => {
+    const index = weeks.findIndex((week) => week.id === Number(state.activeWeekId));
+    if (index > 0) setActiveWeek(weeks[index - 1].id);
+  });
+  document.querySelector("#nextWeekBtn")?.addEventListener("click", () => {
+    const index = weeks.findIndex((week) => week.id === Number(state.activeWeekId));
+    if (index >= 0 && index < weeks.length - 1) setActiveWeek(weeks[index + 1].id);
+  });
+  syncWeekNavigatorUI();
+}
+
+function renderWeekMiniDashboard(week) {
+  const daily = getWeekDailyStats(week.id);
+  const readiness = getWeekReadiness(week);
+  const ideas = selectedIdeasForWeek(week).length;
+  const evidence = (evidenceCache[week.id] || []).length;
+  const wrap = document.createElement("div");
+  wrap.className = "week-mini-dashboard";
+  wrap.innerHTML = `
+    <div class="week-mini-stat week-mini-stat--readiness"><span>جاهزية التوثيق</span><strong data-readiness-week="${week.id}">${arNum(readiness)}٪ — ${readinessLabel(readiness)}</strong><div class="mini-progress"><i data-readiness-bar="${week.id}" style="width:${readiness}%"></i></div></div>
+    <div class="week-mini-stat"><span>أيام مخططة</span><strong>${arNum(daily.planned)} / ${arNum(daily.total)}</strong><small>${arNum(daily.done)} منفذة</small></div>
+    <div class="week-mini-stat"><span>أفكار مختارة</span><strong>${arNum(ideas)}</strong><small>من بنك الأفكار</small></div>
+    <div class="week-mini-stat"><span>شواهد مؤقتة</span><strong>${arNum(evidence)}</strong><small>صورة في الجلسة</small></div>`;
+  return wrap;
+}
+
+function renderWeekWorkspace() {
+  const container = document.querySelector("#weekWorkspace");
+  if (!container) return;
+  const week = weeks.find((item) => item.id === Number(state.activeWeekId)) || weeks[0];
+  state.activeWeekId = week.id;
+  container.innerHTML = "";
+
+  const article = document.createElement("article");
+  article.className = "week-focus-card";
+
+  const head = document.createElement("header");
+  head.className = "week-focus-head";
+  const copy = document.createElement("div");
+  copy.className = "week-focus-copy";
+  copy.innerHTML = `<span class="week-focus-kicker">✦ مساحة أسبوعية مستقلة</span><h3>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h3><p>${escapeHtml(week.dates[0])} إلى ${escapeHtml(week.dates[1])}</p><div class="week-focus-meta"><span>💎 ${escapeHtml(week.value)}</span><span data-week-status="${week.id}">${state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ"}</span><span data-daily-progress-week="${week.id}"></span><span class="readiness-chip">✦ <b data-readiness-week="${week.id}">${arNum(getWeekReadiness(week))}٪ — ${readinessLabel(getWeekReadiness(week))}</b></span></div>`;
+  const orb = document.createElement("div");
+  orb.className = "week-number-orb";
+  orb.textContent = arNum(week.id);
+  head.append(copy, orb);
+
+  const body = document.createElement("div");
+  body.className = "week-body";
+
+  const summary = document.createElement("div");
+  summary.className = "week-summary-strip";
+  const programsBox = document.createElement("div");
+  programsBox.className = "week-summary-box";
+  const programsTitle = document.createElement("h4");
+  programsTitle.textContent = "🎯 برامج هذا الأسبوع";
+  const programs = document.createElement("ul");
+  programs.className = "week-programs-inline";
+  week.programs.forEach((program) => {
+    const item = document.createElement("li");
+    item.textContent = program;
+    programs.appendChild(item);
+  });
+  programsBox.append(programsTitle, programs);
+  const valueBox = document.createElement("div");
+  valueBox.className = "week-summary-box";
+  const valueTitle = document.createElement("h4");
+  valueTitle.textContent = "💎 القيمة المستهدفة";
+  const value = document.createElement("div");
+  value.className = "week-value-badge";
+  value.textContent = week.value;
+  valueBox.append(valueTitle, value);
+  summary.append(programsBox, valueBox);
+
+  body.append(summary, renderWeekMiniDashboard(week), renderDailyPlanner(week));
+
+  const tools = document.createElement("div");
+  tools.className = "week-tools-grid";
+  const programTool = document.createElement("section");
+  programTool.className = "week-tool-card";
+  const pHeading = document.createElement("h4");
+  pHeading.textContent = "💡 أفكار تنفيذ البرامج";
+  programTool.append(pHeading, renderIdeaDetails(week, "program"));
+
+  const valueTool = document.createElement("section");
+  valueTool.className = "week-tool-card";
+  const vHeading = document.createElement("h4");
+  vHeading.textContent = "💎 أفكار تفعيل القيمة";
+  valueTool.append(vHeading, renderIdeaDetails(week, "value"));
+
+  const followupTool = document.createElement("section");
+  followupTool.className = "week-tool-card week-tool-card--followup";
+  const fHeading = document.createElement("h4");
+  fHeading.textContent = "📊 متابعة الأسبوع والتوثيق";
+  followupTool.append(fHeading, renderFollowupPanel(week));
+  tools.append(programTool, valueTool, followupTool);
+  body.appendChild(tools);
+
+  const actions = document.createElement("div");
+  actions.className = "week-quick-actions";
+  const save = document.createElement("button");
+  save.className = "btn btn--primary";
+  save.type = "button";
+  save.textContent = "💾 حفظ هذا الأسبوع";
+  save.addEventListener("click", () => persistState(`تم حفظ ${week.title}`));
+  const excel = document.createElement("button");
+  excel.className = "btn btn--soft";
+  excel.type = "button";
+  excel.textContent = "📊 Excel لهذا الأسبوع";
+  excel.addEventListener("click", () => exportExcel([week]));
+  const word = document.createElement("button");
+  word.className = "btn btn--soft";
+  word.type = "button";
+  word.textContent = "📝 Word لهذا الأسبوع";
+  word.addEventListener("click", () => exportWord([week]));
+  const pdf = document.createElement("button");
+  pdf.className = "btn";
+  pdf.type = "button";
+  pdf.textContent = "🖨️ تقرير PDF لهذا الأسبوع";
+  pdf.addEventListener("click", () => printWeekReport(week));
+  actions.append(save, excel, word, pdf);
+  body.appendChild(actions);
+
+  article.append(head, body);
+  container.appendChild(article);
+  syncWeekNavigatorUI();
+  renderEvidenceGrids(week.id);
+}
+
 function renderDashboard() {
   const dashboard = document.querySelector("#dashboard");
   const completedCount = weeks.filter((week) => Boolean(state.completed[completionKey(week.id)])).length;
@@ -963,9 +1383,11 @@ function renderDashboard() {
     ? Math.round(validAchievements.reduce((sum, value) => sum + value, 0) / validAchievements.length)
     : 0;
   const evidenceCount = weeks.reduce((sum, week) => sum + (evidenceCache[week.id]?.length || 0), 0);
+  const dailyStats = getAllDailyPlanStats();
 
   dashboard.innerHTML = `
     <div class="metric-card"><span class="metric-card__icon">✅</span><span class="metric-card__value">${arNum(completedCount)} / ٧</span><span class="metric-card__label">أسابيع تم تنفيذها</span></div>
+    <div class="metric-card"><span class="metric-card__icon">📅</span><span class="metric-card__value">${arNum(dailyStats.planned)} / ${arNum(dailyStats.total)}</span><span class="metric-card__label">أيام تمت كتابة خطتها</span></div>
     <div class="metric-card"><span class="metric-card__icon">💡</span><span class="metric-card__value">${arNum(selectedIdeas)}</span><span class="metric-card__label">أفكار تم اختيارها وتنفيذها</span></div>
     <div class="metric-card"><span class="metric-card__icon">📈</span><span class="metric-card__value">${arNum(avgAchievement)}٪</span><span class="metric-card__label">متوسط تحقق الهدف المدخل</span></div>
     <div class="metric-card"><span class="metric-card__icon">📸</span><span class="metric-card__value">${arNum(evidenceCount)}</span><span class="metric-card__label">صور توثيق مؤقتة</span></div>
@@ -999,15 +1421,15 @@ function refreshDynamicUI() {
       el.textContent = state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ";
     });
     updateEvidenceCounts(week.id);
+    updateDailyPlanProgress(week.id);
   });
+  syncWeekNavigatorUI();
   renderDashboard();
 }
 
 function renderAll() {
-  renderPlanTable();
-  renderWeekCards();
+  renderWeekWorkspace();
   refreshDynamicUI();
-  weeks.forEach((week) => renderEvidenceGrids(week.id));
 }
 
 function clearEvidenceCache() {
@@ -1191,6 +1613,16 @@ function reportIdentityMeta(extra = "") {
   </div>`;
 }
 
+function dailyPlanReportHtml(week) {
+  const days = dailyPlansForWeek(week).filter((day) => dayPlanHasContent(day));
+  if (!days.length) return "<p>لم تُكتب خطة يومية لهذا الأسبوع بعد.</p>";
+  return `<div class="data-grid">${days.map((day) => {
+    const pieces = [day.activity, day.objective, day.details, day.notes].filter((item) => String(item || "").trim());
+    const status = day.done ? " — ✓ تم التنفيذ" : "";
+    return `<div class="data-item wide"><b>${escapeHtml(day.name)} — ${escapeHtml(day.date)}:</b> ${displayValue(pieces.join(" • "))}${status}</div>`;
+  }).join("")}</div>`;
+}
+
 function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } = {}) {
   const indicator = getIndicator(week.id);
   const record = getNoorRecord(week.id);
@@ -1204,7 +1636,7 @@ function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } 
   const photos = evidenceCache[week.id] || [];
 
   if (!detailed) {
-    return `<section class="week-summary"><h2>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h2><p><span class="status">${status}</span> | <b>القيمة:</b> ${escapeHtml(week.value)}</p><div class="data-grid"><div class="data-item wide"><b>البرنامج:</b> ${displayValue(chosenProgram)}</div><div class="data-item"><b>الفئة:</b> ${displayValue(record.targetGroup)}</div><div class="data-item"><b>عدد المستفيدين:</b> ${displayValue(record.beneficiaries)}</div><div class="data-item wide"><b>الإجراء:</b> ${displayValue(procedure)}</div><div class="data-item wide"><b>الشواهد:</b> ${displayValue(record.evidenceText)}</div><div class="data-item wide"><b>العوائق:</b> ${displayValue(record.obstacles)}</div></div><p><b>الأفكار المحددة:</b> ${arNum(ideas.length)} | <b>صور التوثيق المؤقتة:</b> ${arNum(photos.length)}</p><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>الرضا</div></div>${indicator.impactNote ? `<p><b>أبرز أثر:</b> ${escapeHtml(indicator.impactNote)}</p>` : ""}${record.notes ? `<p><b>ملاحظات عامة:</b> ${escapeHtml(record.notes)}</p>` : ""}</section>`;
+    return `<section class="week-summary"><h2>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h2><p><span class="status">${status}</span> | <b>القيمة:</b> ${escapeHtml(week.value)}</p><div class="data-grid"><div class="data-item wide"><b>البرنامج:</b> ${displayValue(chosenProgram)}</div><div class="data-item wide"><b>الخطة اليومية:</b> ${displayValue(dailyPlanSummaryText(week))}</div><div class="data-item"><b>الفئة:</b> ${displayValue(record.targetGroup)}</div><div class="data-item"><b>عدد المستفيدين:</b> ${displayValue(record.beneficiaries)}</div><div class="data-item wide"><b>الإجراء:</b> ${displayValue(procedure)}</div><div class="data-item wide"><b>الشواهد:</b> ${displayValue(record.evidenceText)}</div><div class="data-item wide"><b>العوائق:</b> ${displayValue(record.obstacles)}</div></div><p><b>الأفكار المحددة:</b> ${arNum(ideas.length)} | <b>صور التوثيق المؤقتة:</b> ${arNum(photos.length)}</p><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>الرضا</div></div>${indicator.impactNote ? `<p><b>أبرز أثر:</b> ${escapeHtml(indicator.impactNote)}</p>` : ""}${record.notes ? `<p><b>ملاحظات عامة:</b> ${escapeHtml(record.notes)}</p>` : ""}</section>`;
   }
 
   return `<section class="box"><h2>بيانات البرنامج والتفعيل</h2><div class="data-grid">
@@ -1215,6 +1647,7 @@ function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } 
       <div class="data-item"><b>المشاركون في التنفيذ:</b> ${displayValue(record.participants)}</div>
       <div class="data-item wide"><b>إجراء التنفيذ:</b> ${displayValue(procedure)}</div>
     </div></section>
+    <section class="box"><h2>الخطة اليومية للأسبوع</h2>${dailyPlanReportHtml(week)}</section>
     <section class="box"><h2>الأفكار المختارة</h2>${ideas.length ? `<ul>${ideas.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : "<p>لم يتم تحديد أفكار بعد.</p>"}</section>
     <section class="box"><h2>مؤشرات تحقيق الأهداف والأثر</h2><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>رضا المستفيدين</div></div><p><b>الأثر الملحوظ:</b> ${displayValue(indicator.impactNote)}</p></section>
     <section class="box"><h2>الشواهد والعوائق والملاحظات</h2><div class="data-grid">
@@ -1462,6 +1895,17 @@ function cloneStateForWeeks(selection) {
   Object.entries(state.custom || {}).forEach(([key, value]) => {
     if (belongsToSelection(key) && Array.isArray(value)) clean.custom[key] = value.slice(0, 30).map((item) => safeString(item, 300)).filter(Boolean);
   });
+  Object.entries(state.dayPlans || {}).forEach(([key, value]) => {
+    if (!belongsToSelection(key) || !value || typeof value !== "object") return;
+    clean.dayPlans[key] = {
+      activity: safeString(value.activity, 240),
+      objective: safeString(value.objective, 320),
+      details: safeString(value.details, 1800),
+      notes: safeString(value.notes, 900),
+      done: Boolean(value.done)
+    };
+  });
+  clean.activeWeekId = selectedWeeks[0]?.id || 1;
 
   selectedWeeks.forEach((week) => {
     const key = completionKey(week.id);
@@ -1575,6 +2019,23 @@ function sanitizedImportedState(raw) {
       };
     });
   }
+  if (source.dayPlans && typeof source.dayPlans === "object") {
+    weeks.forEach((week) => {
+      guidanceWeekdays.forEach((_, dayIndex) => {
+        const key = dayPlanKey(week.id, dayIndex);
+        const item = source.dayPlans[key];
+        if (!item || typeof item !== "object") return;
+        clean.dayPlans[key] = {
+          activity: safeString(item.activity, 240),
+          objective: safeString(item.objective, 320),
+          details: safeString(item.details, 1800),
+          notes: safeString(item.notes, 900),
+          done: Boolean(item.done)
+        };
+      });
+    });
+  }
+  clean.activeWeekId = weeks.some((week) => week.id === Number(source.activeWeekId)) ? Number(source.activeWeekId) : 1;
   const report = source.report && typeof source.report === "object" ? source.report : {};
   clean.report.userName = safeString(report.userName, 120);
   clean.report.principalName = safeString(report.principalName, 120);
@@ -1740,88 +2201,6 @@ function xlsxCell(value, rowIndex, colIndex, style = 0) {
   return `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ""}><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
 }
 
-function exportExcel() {
-  captureIdentity();
-  persistState();
-  const { headers, rows } = officeRows();
-  const meta = [
-    ["مُعدّ التقرير", state.report?.userName || "—"],
-    ["إدارة التعليم", state.admin || "—"],
-    ["اسم المدرسة", state.school || "—"],
-    ["مدير المدرسة", state.report?.principalName || "—"],
-    ["العام الدراسي", state.report?.academicYear || "—"],
-    ["الصور", "لا يتضمن صور التوثيق المؤقتة"]
-  ];
-
-  const sheetRows = [];
-  let r = 1;
-  sheetRows.push(`<row r="${r}">${xlsxCell("التقرير الختامي — مساعد الموجه الطلابي", r, 0, 2)}</row>`);
-  r += 1;
-  meta.forEach(([label, value]) => {
-    sheetRows.push(`<row r="${r}">${xlsxCell(label, r, 0, 1)}${xlsxCell(value, r, 1, 0)}</row>`);
-    r += 1;
-  });
-  sheetRows.push(`<row r="${r}">${headers.map((h, i) => xlsxCell(h, r, i, 1)).join("")}</row>`);
-  r += 1;
-  rows.forEach((row) => {
-    sheetRows.push(`<row r="${r}">${row.map((v, i) => xlsxCell(v, r, i, 0)).join("")}</row>`);
-    r += 1;
-  });
-
-  const columns = Array.from({ length: headers.length }, (_, i) => `<col min="${i + 1}" max="${i + 1}" width="${i < 2 ? 18 : i < 9 ? 23 : 32}" customWidth="1"/>`).join("");
-  const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews>
-  <cols>${columns}</cols>
-  <sheetData>${sheetRows.join("")}</sheetData>
-</worksheet>`;
-
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-  <fonts count="3">
-    <font><sz val="11"/><name val="Arial"/></font>
-    <font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font>
-    <font><b/><color rgb="FFFFFFFF"/><sz val="16"/><name val="Arial"/></font>
-  </fonts>
-  <fills count="4">
-    <fill><patternFill patternType="none"/></fill>
-    <fill><patternFill patternType="gray125"/></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF087F79"/><bgColor indexed="64"/></patternFill></fill>
-    <fill><patternFill patternType="solid"><fgColor rgb="FF0F9B93"/><bgColor indexed="64"/></patternFill></fill>
-  </fills>
-  <borders count="2">
-    <border><left/><right/><top/><bottom/><diagonal/></border>
-    <border><left style="thin"><color rgb="FFD6E5E2"/></left><right style="thin"><color rgb="FFD6E5E2"/></right><top style="thin"><color rgb="FFD6E5E2"/></top><bottom style="thin"><color rgb="FFD6E5E2"/></bottom><diagonal/></border>
-  </borders>
-  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-  <cellXfs count="3">
-    <xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf>
-    <xf numFmtId="0" fontId="2" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1"/></xf>
-  </cellXfs>
-  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
-</styleSheet>`;
-
-  const workbookXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <bookViews><workbookView/></bookViews>
-  <sheets><sheet name="التقرير الختامي" sheetId="1" r:id="rId1"/></sheets>
-</workbook>`;
-
-  const entries = [
-    { name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>` },
-    { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>` },
-    { name: "xl/workbook.xml", data: workbookXml },
-    { name: "xl/_rels/workbook.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>` },
-    { name: "xl/worksheets/sheet1.xml", data: sheetXml },
-    { name: "xl/styles.xml", data: stylesXml }
-  ];
-
-  const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${safeFileBase(state.school || "تقرير-التوجيه")}.xlsx`);
-  toast("تم تصدير ملف Excel حقيقي بصيغة XLSX");
-}
-
 function dataUrlToBytes(dataUrl) {
   const match = /^data:([^;,]+);base64,(.+)$/i.exec(dataUrl || "");
   if (!match) return null;
@@ -1865,90 +2244,7 @@ function docxInfoTable(rows) {
   return `<w:tbl><w:tblPr><w:tblW w:w="9200" w:type="dxa"/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="D6E5E2"/><w:left w:val="single" w:sz="4" w:color="D6E5E2"/><w:bottom w:val="single" w:sz="4" w:color="D6E5E2"/><w:right w:val="single" w:sz="4" w:color="D6E5E2"/><w:insideH w:val="single" w:sz="4" w:color="D6E5E2"/><w:insideV w:val="single" w:sz="4" w:color="D6E5E2"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="2600"/><w:gridCol w:w="6600"/></w:tblGrid>${body}</w:tbl>`;
 }
 
-function docxLogoParagraph() {
-  return `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0"><wp:extent cx="914400" cy="914400"/><wp:docPr id="1" name="شعار التقرير"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="0" name="logo.jpg"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="914400" cy="914400"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
-}
 
-function exportWord() {
-  captureIdentity();
-  persistState();
-  const logoData = dataUrlToBytes(state.report?.logoDataUrl || defaultLogoJpegDataUrl());
-  const metaRows = [
-    ["اسم مُعدّ التقرير", state.report?.userName || "—"],
-    ["إدارة التعليم", state.admin || "—"],
-    ["اسم المدرسة", state.school || "—"],
-    ["مدير المدرسة", state.report?.principalName || "—"],
-    ["العام الدراسي", state.report?.academicYear || "—"]
-  ];
-
-  const weekSections = weeks.map((week) => {
-    const indicator = getIndicator(week.id);
-    const record = getNoorRecord(week.id);
-    const status = state.completed[completionKey(week.id)] ? "تم التنفيذ" : "قيد التنفيذ";
-    const program = record.program || week.programs.join("، ");
-    const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ");
-    const info = [
-      ["الفترة", `${week.dates[0]} - ${week.dates[1]}`],
-      ["البرنامج", program],
-      ["القيمة", week.value],
-      ["الفئة المستهدفة", record.targetGroup],
-      ["عدد المستفيدين", record.beneficiaries],
-      ["المشاركون", record.participants],
-      ["حالة التنفيذ", status],
-      ["إجراء التنفيذ", procedure],
-      ["شواهد التنفيذ", record.evidenceText],
-      ["العوائق", record.obstacles],
-      ["ملاحظات عامة", record.notes],
-      ["المشاركة", `${indicator.participation || 0}%`],
-      ["تحقق الهدف", `${indicator.achievement || 0}%`],
-      ["الرضا", `${indicator.satisfaction || 0}%`],
-      ["الأثر الملحوظ", indicator.impactNote],
-      ["الأفكار المحددة", selectedIdeasForWeek(week).join(" • ")]
-    ];
-    return `${docxParagraph(`${week.title} — ${week.theme}`, { bold: true, size: 28, spacingAfter: 120 })}${docxInfoTable(info)}${docxParagraph("", { spacingAfter: 160 })}`;
-  }).join("");
-
-  const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
-<w:body>
-${logoData ? docxLogoParagraph() : ""}
-${docxParagraph("التقرير الختامي — «أثري يبدأ مني»", { bold: true, size: 34, center: true, spacingAfter: 80 })}
-${docxParagraph("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", { size: 24, center: true, spacingAfter: 180 })}
-${docxInfoTable(metaRows)}
-${docxParagraph("", { spacingAfter: 180 })}
-${weekSections}
-${docxParagraph("أ/ فاطمة هزازي", { bold: true, size: 24, center: true, spacingAfter: 0 })}
-<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900" w:header="500" w:footer="500" w:gutter="0"/></w:sectPr>
-</w:body></w:document>`;
-
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
-<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
-<Default Extension="xml" ContentType="application/xml"/>
-${logoData ? '<Default Extension="jpg" ContentType="image/jpeg"/>' : ""}
-<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
-<Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
-</Types>`;
-
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:rtl/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
-
-  const rels = [`<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`];
-  if (logoData) rels.unshift(`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.jpg"/>`);
-
-  const entries = [
-    { name: "[Content_Types].xml", data: contentTypes },
-    { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>` },
-    { name: "word/document.xml", data: documentXml },
-    { name: "word/styles.xml", data: stylesXml },
-    { name: "word/_rels/document.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${rels.join("")}</Relationships>` }
-  ];
-  if (logoData) entries.push({ name: "word/media/logo.jpg", data: logoData.bytes });
-
-  const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${safeFileBase(state.school || "تقرير-التوجيه")}.docx`);
-  toast("تم تصدير ملف Word حقيقي بصيغة DOCX");
-}
 
 
 async function processReportLogo(file) {
@@ -2095,6 +2391,7 @@ function init() {
   wireIdentity();
   wireToolbar();
   wireReportSettings();
+  wireWeekNavigator();
   renderAll();
   loadEvidence();
   wirePrivacyGate();
@@ -2122,6 +2419,7 @@ function weekHasReportData(week) {
     hasIndicators ||
     hasRecord ||
     hasNotes ||
+    getWeekDailyStats(week.id).planned > 0 ||
     selectedIdeasForWeek(week).length ||
     (evidenceCache[week.id] || []).length
   );
@@ -2144,33 +2442,6 @@ function exportFileStem(selectedWeeks) {
 function weekExportTitle(selectedWeeks) {
   if (selectedWeeks.length === 1) return `تقرير ${selectedWeeks[0].title} — ${selectedWeeks[0].theme}`;
   return "تقرير التوثيق — الأسابيع المعبأة";
-}
-
-function weekInfoRows(week) {
-  const indicator = getIndicator(week.id);
-  const record = getNoorRecord(week.id);
-  const status = state.completed[completionKey(week.id)] ? "تم التنفيذ" : "قيد التنفيذ";
-  const program = record.program || week.programs.join("، ");
-  const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ");
-  return [
-    ["الفترة", `${week.dates[0]} - ${week.dates[1]}`],
-    ["البرنامج", program],
-    ["القيمة", week.value],
-    ["الفئة المستهدفة", record.targetGroup],
-    ["عدد المستفيدين", record.beneficiaries],
-    ["المشاركون", record.participants],
-    ["حالة التنفيذ", status],
-    ["إجراء التنفيذ", procedure],
-    ["شواهد التنفيذ", record.evidenceText],
-    ["العوائق", record.obstacles],
-    ["ملاحظات عامة", record.notes],
-    ["المشاركة", indicator.participation === "" ? "—" : `${indicator.participation}%`],
-    ["تحقق الهدف", indicator.achievement === "" ? "—" : `${indicator.achievement}%`],
-    ["الرضا", indicator.satisfaction === "" ? "—" : `${indicator.satisfaction}%`],
-    ["الأثر الملحوظ", indicator.impactNote],
-    ["الأفكار المحددة", selectedIdeasForWeek(week).join(" • ")],
-    ["عدد صور الشواهد والتوثيق", String((evidenceCache[week.id] || []).length)]
-  ];
 }
 
 function imageSizeFromDataUrl(dataUrl) {
@@ -2197,21 +2468,101 @@ function docxImageParagraphV6(relId, docPrId, name, cx, cy) {
   return `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:after="120"/></w:pPr><w:r><w:drawing><wp:inline xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${safeName}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${safeName}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
+
+function docxPageBreak() {
+  return '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+}
+
+function docxCell(content, { width = 2200, fill = "FFFFFF", bold = false, center = false, color = "173F3D", size = 20, margin = 90 } = {}) {
+  const text = content == null || content === "" ? "—" : String(content);
+  const jc = center ? "center" : "right";
+  return `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/><w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="${margin}" w:type="dxa"/><w:left w:w="${margin}" w:type="dxa"/><w:bottom w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tcMar><w:vAlign w:val="center"/></w:tcPr><w:p><w:pPr><w:bidi/><w:jc w:val="${jc}"/><w:spacing w:after="0"/></w:pPr><w:r><w:rPr><w:rtl/><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/>${bold ? "<w:b/>" : ""}<w:color w:val="${color}"/><w:sz w:val="${size}"/><w:szCs w:val="${size}"/></w:rPr><w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p></w:tc>`;
+}
+
+function docxBand(text) {
+  return `<w:tbl><w:tblPr><w:tblW w:w="0" w:type="auto"/><w:jc w:val="center"/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="9400"/></w:tblGrid><w:tr>${docxCell(text, { width: 9400, fill: "087F79", bold: true, center: true, color: "FFFFFF", size: 26, margin: 120 })}</w:tr></w:tbl>`;
+}
+
+function docxFormalHeader(logoXml) {
+  const official = `${docxParagraph("المملكة العربية السعودية", { bold: true, size: 22, center: true, spacingAfter: 30 })}${docxParagraph("وزارة التعليم", { bold: true, size: 22, center: true, spacingAfter: 30 })}${docxParagraph(state.admin ? `إدارة التعليم: ${state.admin}` : "إدارة التعليم", { size: 20, center: true, spacingAfter: 20 })}${docxParagraph(state.school ? `المدرسة: ${state.school}` : "اسم المدرسة", { size: 20, center: true, spacingAfter: 0 })}`;
+  const logoCell = `<w:tc><w:tcPr><w:tcW w:w="1900" w:type="dxa"/><w:vAlign w:val="center"/><w:tcMar><w:top w:w="40" w:type="dxa"/><w:left w:w="40" w:type="dxa"/><w:bottom w:w="40" w:type="dxa"/><w:right w:w="40" w:type="dxa"/></w:tcMar></w:tcPr>${logoXml || docxParagraph("", { spacingAfter: 0 })}</w:tc>`;
+  const textCell = `<w:tc><w:tcPr><w:tcW w:w="7500" w:type="dxa"/><w:vAlign w:val="center"/><w:tcMar><w:top w:w="50" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="50" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar></w:tcPr>${official}</w:tc>`;
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:bottom w:val="single" w:sz="10" w:color="D8B66F"/><w:top w:val="nil"/><w:left w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="1900"/><w:gridCol w:w="7500"/></w:tblGrid><w:tr>${logoCell}${textCell}</w:tr></w:tbl>`;
+}
+
+function docxIdentityGrid() {
+  const cells = [
+    ["اسم مُعدّ التقرير", state.report?.userName || "—", "مدير المدرسة", state.report?.principalName || "—"],
+    ["العام الدراسي", state.report?.academicYear || "—", "إدارة التعليم", state.admin || "—"]
+  ];
+  const rows = cells.map((row) => `<w:tr>${docxCell(row[0], {width:1500, fill:"EAF7F4", bold:true})}${docxCell(row[1], {width:3200})}${docxCell(row[2], {width:1500, fill:"EAF7F4", bold:true})}${docxCell(row[3], {width:3200})}</w:tr>`).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="5" w:color="DCEAE7"/><w:left w:val="single" w:sz="5" w:color="DCEAE7"/><w:bottom w:val="single" w:sz="5" w:color="DCEAE7"/><w:right w:val="single" w:sz="5" w:color="DCEAE7"/><w:insideH w:val="single" w:sz="4" w:color="DCEAE7"/><w:insideV w:val="single" w:sz="4" w:color="DCEAE7"/></w:tblBorders></w:tblPr>${rows}</w:tbl>`;
+}
+
+function docxDailyTable(week) {
+  const widths = [850, 1200, 1900, 2500, 1050, 1900];
+  const headers = ["اليوم", "التاريخ", "البرنامج / الهدف", "خطة التنفيذ", "الحالة", "الملاحظات"];
+  const head = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${headers.map((h,i)=>docxCell(h,{width:widths[i],fill:"087F79",bold:true,center:true,color:"FFFFFF",size:19})).join("")}</w:tr>`;
+  const rows = dailyPlansForWeek(week).map((day) => {
+    const activityGoal = [day.activity, day.objective ? `الهدف: ${day.objective}` : ""].filter(Boolean).join(" — ") || "—";
+    const status = day.done ? "تم التنفيذ" : (dayPlanHasContent(day) ? "مخطط" : "—");
+    const statusFill = day.done ? "DFF3EE" : (dayPlanHasContent(day) ? "FFF3D8" : "FFFFFF");
+    return `<w:tr>${docxCell(day.name,{width:widths[0],fill:"F4FAF8",bold:true,center:true})}${docxCell(day.date,{width:widths[1],center:true,size:18})}${docxCell(activityGoal,{width:widths[2],size:18})}${docxCell(day.details || "—",{width:widths[3],size:18})}${docxCell(status,{width:widths[4],fill:statusFill,bold:day.done,center:true,size:18})}${docxCell(day.notes || "—",{width:widths[5],size:18})}</w:tr>`;
+  }).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblLayout w:type="fixed"/><w:tblBorders><w:top w:val="single" w:sz="5" w:color="D5E5E2"/><w:left w:val="single" w:sz="5" w:color="D5E5E2"/><w:bottom w:val="single" w:sz="5" w:color="D5E5E2"/><w:right w:val="single" w:sz="5" w:color="D5E5E2"/><w:insideH w:val="single" w:sz="4" w:color="D5E5E2"/><w:insideV w:val="single" w:sz="4" w:color="D5E5E2"/></w:tblBorders></w:tblPr><w:tblGrid>${widths.map(w=>`<w:gridCol w:w="${w}"/>`).join("")}</w:tblGrid>${head}${rows}</w:tbl>`;
+}
+
+function docxWeekDetailsTable(week) {
+  const indicator = getIndicator(week.id);
+  const record = getNoorRecord(week.id);
+  const status = state.completed[completionKey(week.id)] ? "تم التنفيذ" : "قيد التنفيذ";
+  const program = record.program || week.programs.join("، ");
+  const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ") || "—";
+  const rows = [
+    ["الفترة", `${week.dates[0]} - ${week.dates[1]}`],
+    ["البرنامج", program],
+    ["القيمة المستهدفة", week.value],
+    ["الفئة المستهدفة", record.targetGroup || "—"],
+    ["عدد المستفيدين", record.beneficiaries || "—"],
+    ["المشاركون في التنفيذ", record.participants || "—"],
+    ["حالة الأسبوع", status],
+    ["إجراء التنفيذ", procedure],
+    ["الأفكار المختارة", selectedIdeasForWeek(week).join(" • ") || "—"]
+  ];
+  const body = rows.map(([label,value])=>`<w:tr>${docxCell(label,{width:2200,fill:"EAF7F4",bold:true})}${docxCell(value,{width:7200})}</w:tr>`).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="5" w:color="DCEAE7"/><w:left w:val="single" w:sz="5" w:color="DCEAE7"/><w:bottom w:val="single" w:sz="5" w:color="DCEAE7"/><w:right w:val="single" w:sz="5" w:color="DCEAE7"/><w:insideH w:val="single" w:sz="4" w:color="DCEAE7"/><w:insideV w:val="single" w:sz="4" w:color="DCEAE7"/></w:tblBorders></w:tblPr>${body}</w:tbl>`;
+}
+
+function docxKpiTable(week) {
+  const indicator = getIndicator(week.id);
+  const vals = [
+    ["المشاركة", indicator.participation === "" ? "—" : `${indicator.participation}%`, "EAF3FF"],
+    ["تحقق الهدف", indicator.achievement === "" ? "—" : `${indicator.achievement}%`, "E6F5EC"],
+    ["رضا المستفيدين", indicator.satisfaction === "" ? "—" : `${indicator.satisfaction}%`, "FFF3D8"]
+  ];
+  const row = vals.map(([label,value,fill])=>`<w:tc><w:tcPr><w:tcW w:w="3133" w:type="dxa"/><w:shd w:fill="${fill}"/><w:tcMar><w:top w:w="120" w:type="dxa"/><w:left w:w="80" w:type="dxa"/><w:bottom w:w="120" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tcMar></w:tcPr>${docxParagraph(label,{bold:true,size:19,center:true,spacingAfter:35})}${docxParagraph(value,{bold:true,size:28,center:true,spacingAfter:0})}</w:tc>`).join("");
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="nil"/><w:left w:val="nil"/><w:bottom w:val="nil"/><w:right w:val="nil"/><w:insideH w:val="nil"/><w:insideV w:val="nil"/></w:tblBorders></w:tblPr><w:tblGrid><w:gridCol w:w="3133"/><w:gridCol w:w="3133"/><w:gridCol w:w="3134"/></w:tblGrid><w:tr>${row}</w:tr></w:tbl>`;
+}
+
+function docxNotesTable(week) {
+  const indicator = getIndicator(week.id);
+  const record = getNoorRecord(week.id);
+  const rows = [
+    ["الأثر الملحوظ", indicator.impactNote || "—"],
+    ["شواهد التنفيذ", record.evidenceText || "—"],
+    ["العوائق", record.obstacles || "—"],
+    ["ملاحظات عامة", record.notes || "—"]
+  ];
+  return `<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="5" w:color="E2E9E7"/><w:left w:val="single" w:sz="5" w:color="E2E9E7"/><w:bottom w:val="single" w:sz="5" w:color="E2E9E7"/><w:right w:val="single" w:sz="5" w:color="E2E9E7"/><w:insideH w:val="single" w:sz="4" w:color="E2E9E7"/><w:insideV w:val="single" w:sz="4" w:color="E2E9E7"/></w:tblBorders></w:tblPr>${rows.map(([l,v])=>`<w:tr>${docxCell(l,{width:2200,fill:"FBF6E9",bold:true,color:"6D542B"})}${docxCell(v,{width:7200})}</w:tr>`).join("")}</w:tbl>`;
+}
+
 async function exportWord(selection = null) {
   captureIdentity();
   persistState();
   const selectedWeeks = exportableWeeks(selection);
   if (!selectedWeeks.length) return;
 
-  setStatus("جارٍ تجهيز ملف Word مع صور الشواهد…");
-  const metaRows = [
-    ["اسم مُعدّ التقرير", state.report?.userName || "—"],
-    ["إدارة التعليم", state.admin || "—"],
-    ["اسم المدرسة", state.school || "—"],
-    ["مدير المدرسة", state.report?.principalName || "—"],
-    ["العام الدراسي", state.report?.academicYear || "—"]
-  ];
-
+  setStatus("جارٍ تجهيز Word الاحترافي…");
   const relationships = [
     `<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
   ];
@@ -2219,25 +2570,54 @@ async function exportWord(selection = null) {
   let relCounter = 2;
   let docPrCounter = 1;
 
-  let logoParagraph = "";
+  let logoRelId = "";
+  let logoFit = null;
   const logoDataUrl = state.report?.logoDataUrl || defaultLogoJpegDataUrl();
   const logoData = dataUrlToBytes(logoDataUrl);
   if (logoData) {
-    const relId = `rId${relCounter++}`;
-    relationships.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/report-logo.jpeg"/>`);
+    logoRelId = `rId${relCounter++}`;
+    relationships.push(`<Relationship Id="${logoRelId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/report-logo.jpeg"/>`);
     mediaEntries.push({ name: "word/media/report-logo.jpeg", data: logoData.bytes });
     const dims = await imageSizeFromDataUrl(logoDataUrl);
-    const fit = fitImageEmu(dims.width, dims.height, 1.1, 1.1);
-    logoParagraph = docxImageParagraphV6(relId, docPrCounter++, "شعار التقرير", fit.cx, fit.cy);
+    logoFit = fitImageEmu(dims.width, dims.height, 0.9, 0.9);
   }
+  const nextLogoDrawing = () => (logoRelId && logoFit ? docxImageParagraphV6(logoRelId, docPrCounter++, "شعار التقرير", logoFit.cx, logoFit.cy) : "");
 
-  const weekSections = [];
-  for (const week of selectedWeeks) {
-    let section = `${docxParagraph(`${week.title} — ${week.theme}`, { bold: true, size: 30, spacingAfter: 120 })}${docxInfoTable(weekInfoRows(week))}`;
+  const reportParts = [];
+  reportParts.push(docxFormalHeader(nextLogoDrawing()));
+  reportParts.push(docxParagraph("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", { bold: true, size: 32, center: true, spacingAfter: 50 }));
+  reportParts.push(docxParagraph("«أثري يبدأ مني»", { bold: true, size: 24, center: true, spacingAfter: 120 }));
+  reportParts.push(docxIdentityGrid());
+  reportParts.push(docxParagraph("", { spacingAfter: 120 }));
+
+  for (let weekIndex = 0; weekIndex < selectedWeeks.length; weekIndex += 1) {
+    const week = selectedWeeks[weekIndex];
+    if (weekIndex > 0) {
+      reportParts.push(docxPageBreak());
+      reportParts.push(docxFormalHeader(nextLogoDrawing()));
+    }
+    const readiness = getWeekReadiness(week);
+    reportParts.push(docxBand(`${week.title} — ${week.theme}`));
+    reportParts.push(docxParagraph(`${week.dates[0]} إلى ${week.dates[1]}  •  القيمة: ${week.value}  •  جاهزية التوثيق: ${readiness}%`, { bold: true, size: 20, center: true, spacingAfter: 120 }));
+
+    reportParts.push(docxParagraph("الخطة اليومية للأسبوع", { bold: true, size: 25, spacingAfter: 70 }));
+    reportParts.push(docxDailyTable(week));
+    reportParts.push(docxParagraph("", { spacingAfter: 100 }));
+
+    reportParts.push(docxParagraph("بيانات البرنامج والتفعيل", { bold: true, size: 25, spacingAfter: 70 }));
+    reportParts.push(docxWeekDetailsTable(week));
+    reportParts.push(docxParagraph("", { spacingAfter: 100 }));
+
+    reportParts.push(docxParagraph("مؤشرات تحقيق الأهداف والأثر", { bold: true, size: 25, spacingAfter: 70 }));
+    reportParts.push(docxKpiTable(week));
+    reportParts.push(docxParagraph("", { spacingAfter: 80 }));
+    reportParts.push(docxNotesTable(week));
+
     const photos = evidenceCache[week.id] || [];
-    section += docxParagraph("صور الشواهد والتوثيق", { bold: true, size: 26, spacingAfter: 100 });
+    reportParts.push(docxParagraph("", { spacingAfter: 90 }));
+    reportParts.push(docxParagraph("صور الشواهد والتوثيق", { bold: true, size: 25, spacingAfter: 70 }));
     if (!photos.length) {
-      section += docxParagraph("لا توجد صور توثيق مضافة في الجلسة الحالية.", { size: 22, spacingAfter: 160 });
+      reportParts.push(docxParagraph("لا توجد صور توثيق مضافة في الجلسة الحالية.", { size: 20, spacingAfter: 120 }));
     } else {
       for (let index = 0; index < photos.length; index += 1) {
         const photo = photos[index];
@@ -2248,42 +2628,42 @@ async function exportWord(selection = null) {
         relationships.push(`<Relationship Id="${relId}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${fileName}"/>`);
         mediaEntries.push({ name: `word/media/${fileName}`, data: imageData.bytes });
         const dims = await imageSizeFromDataUrl(photo.dataUrl);
-        const fit = fitImageEmu(dims.width, dims.height, 5.7, 3.8);
-        section += docxImageParagraphV6(relId, docPrCounter++, photo.name || `شاهد ${index + 1}`, fit.cx, fit.cy);
+        const fit = fitImageEmu(dims.width, dims.height, 5.25, 3.15);
+        reportParts.push(docxParagraph(`شاهد ${index + 1}`, { bold: true, size: 18, center: true, spacingAfter: 30 }));
+        reportParts.push(docxImageParagraphV6(relId, docPrCounter++, photo.name || `شاهد ${index + 1}`, fit.cx, fit.cy));
       }
     }
-    section += docxParagraph("", { spacingAfter: 180 });
-    weekSections.push(section);
+    reportParts.push(docxParagraph("أ/ فاطمة هزازي", { bold: true, size: 20, center: true, spacingAfter: 0 }));
   }
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>
-${logoParagraph}
-${docxParagraph(weekExportTitle(selectedWeeks), { bold: true, size: 34, center: true, spacingAfter: 80 })}
-${docxParagraph("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", { size: 24, center: true, spacingAfter: 180 })}
-${docxInfoTable(metaRows)}
-${docxParagraph("", { spacingAfter: 180 })}
-${weekSections.join("")}
-${docxParagraph("أ/ فاطمة هزازي", { bold: true, size: 24, center: true, spacingAfter: 0 })}
-<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="900" w:right="900" w:bottom="900" w:left="900" w:header="500" w:footer="500" w:gutter="0"/></w:sectPr>
+${reportParts.join("")}
+<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="720" w:right="720" w:bottom="720" w:left="720" w:header="360" w:footer="360" w:gutter="0"/></w:sectPr>
 </w:body></w:document>`;
 
-  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>`;
+  const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
 
-  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:rtl/><w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+  const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:cs="Arial"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
+
+  const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(weekExportTitle(selectedWeeks))}</dc:title><dc:subject>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</dc:subject><dc:creator>مساعد الموجه الطلابي</dc:creator><cp:lastModifiedBy>مساعد الموجه الطلابي</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified></cp:coreProperties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>12.0</AppVersion></Properties>`;
 
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
-    { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>` },
+    { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` },
     { name: "word/document.xml", data: documentXml },
     { name: "word/styles.xml", data: stylesXml },
     { name: "word/_rels/document.xml.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>` },
+    { name: "docProps/core.xml", data: coreXml },
+    { name: "docProps/app.xml", data: appXml },
     ...mediaEntries
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}.docx`);
-  toast(selectedWeeks.length === 1 ? "تم تصدير Word للأسبوع المحدد مع الشواهد والصور" : "تم تصدير Word للأسابيع المعبأة فقط مع الشواهد والصور");
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v12.docx`);
+  setStatus("تم تجهيز Word الاحترافي");
+  toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
 
 function xlsxSafeSheetName(value, fallback) {
@@ -2316,13 +2696,14 @@ async function exportExcel(selection = null) {
   persistState();
   const selectedWeeks = exportableWeeks(selection);
   if (!selectedWeeks.length) return;
-  setStatus("جارٍ تجهيز تقرير Excel احترافي للطباعة A4…");
+  setStatus("جارٍ تجهيز Excel الاحترافي مع الخطة اليومية والكليشة الجديدة…");
 
-  // تنسيق احترافي ومهيأ للطباعة: RTL + A4 + صفحة واحدة قدر الإمكان.
+  // تنسيق Excel v12: شعار ثابت في مساحة مستقلة، كليشة رسمية، RTL، A4،
+  // خطة يومية واضحة، وكل أسبوع في ورقة مستقلة.
   // style indices:
   // 0 body, 1 label, 2 title, 3 section, 4 value, 5 subtitle,
   // 6 status-done, 7 status-pending, 8 kpi-label, 9 kpi-blue,
-  // 10 kpi-green, 11 kpi-orange, 12 note, 13 footer, 14 photo-note.
+  // 10 kpi-green, 11 kpi-orange, 12 note, 13 clean-center, 14 photo-note.
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="8">
@@ -2349,20 +2730,14 @@ async function exportExcel(selection = null) {
   </fills>
   <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
-    <border>
-      <left style="thin"><color rgb="FFD4E4E1"/></left>
-      <right style="thin"><color rgb="FFD4E4E1"/></right>
-      <top style="thin"><color rgb="FFD4E4E1"/></top>
-      <bottom style="thin"><color rgb="FFD4E4E1"/></bottom>
-      <diagonal/>
-    </border>
+    <border><left style="thin"><color rgb="FFD4E4E1"/></left><right style="thin"><color rgb="FFD4E4E1"/></right><top style="thin"><color rgb="FFD4E4E1"/></top><bottom style="thin"><color rgb="FFD4E4E1"/></bottom><diagonal/></border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
   <cellXfs count="15">
     <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="1" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
-    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
@@ -2372,7 +2747,7 @@ async function exportExcel(selection = null) {
     <xf numFmtId="9" fontId="5" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="9" fontId="5" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf>
-    <xf numFmtId="0" fontId="4" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="7" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -2394,7 +2769,7 @@ async function exportExcel(selection = null) {
     logoMediaName = `image${globalMediaCounter++}.jpeg`;
     mediaMap.set(logoMediaName, logoData.bytes);
     const dims = await imageSizeFromDataUrl(logoDataUrl);
-    logoFit = fitImageEmu(dims.width, dims.height, 1.2, 1.2);
+    logoFit = fitImageEmu(dims.width, dims.height, 1.05, 1.05);
   }
 
   for (let sheetIndex = 0; sheetIndex < selectedWeeks.length; sheetIndex += 1) {
@@ -2407,123 +2782,126 @@ async function exportExcel(selection = null) {
     const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ") || "—";
     const ideas = selectedIdeasForWeek(week).join(" • ") || "لم يتم تحديد أفكار بعد.";
     const photos = evidenceCache[week.id] || [];
+    const dailyPlans = dailyPlansForWeek(week);
 
     const rows = [];
     const merges = [];
-    const addRow = (rowNum, height, cells = "") => {
-      rows.push(`<row r="${rowNum}" ht="${height}" customHeight="1">${cells}</row>`);
-    };
+    const addRow = (rowNum, height, cells = "") => rows.push(`<row r="${rowNum}" ht="${height}" customHeight="1">${cells}</row>`);
     const merge = (ref) => merges.push(ref);
+    let r = 1;
 
-    // رأس التقرير
-    addRow(1, 28, xlsxMergedCell(`${week.title} — ${week.theme}`, 1, 0, 2));
-    addRow(2, 28);
-    merge("A1:F2");
-    merge("G1:H3");
-    addRow(3, 21, xlsxMergedCell("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", 3, 0, 5));
-    merge("A3:F3");
-    addRow(4, 6);
+    // الكليشة الرسمية: الشعار في مساحة مستقلة يمين الورقة (A:B في RTL)،
+    // والنصوص في مساحة C:H دون تداخل مع الصورة.
+    addRow(r, 22, xlsxCell("", r, 0, 13) + xlsxMergedCell("المملكة العربية السعودية", r, 2, 13));
+    merge(`A${r}:B${r + 3}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 22, xlsxMergedCell("وزارة التعليم", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 22, xlsxMergedCell(state.admin ? `إدارة التعليم: ${state.admin}` : "إدارة التعليم", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 22, xlsxMergedCell(state.school ? `المدرسة: ${state.school}` : "اسم المدرسة", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
 
-    // بيانات التقرير الرئيسية
-    const metaRows = [
-      [5, "اسم مُعدّ التقرير", state.report?.userName || "—", "إدارة التعليم", state.admin || "—"],
-      [6, "اسم المدرسة", state.school || "—", "مدير المدرسة", state.report?.principalName || "—"],
-      [7, "العام الدراسي", state.report?.academicYear || "—", "الفترة", `${week.dates[0]} – ${week.dates[1]}`],
-      [8, "حالة التنفيذ", status, "عنوان الأسبوع", week.theme]
-    ];
-    for (const [rowNum, label1, value1, label2, value2] of metaRows) {
-      const statusStyle = rowNum === 8 ? (status === "تم التنفيذ" ? 6 : 7) : 4;
-      addRow(rowNum, 23,
-        xlsxCell(label1, rowNum, 0, 1) +
-        xlsxMergedCell(value1, rowNum, 2, statusStyle) +
-        xlsxCell(label2, rowNum, 4, 1) +
-        xlsxMergedCell(value2, rowNum, 6, 4)
+    addRow(r, 31, xlsxMergedCell("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", r, 0, 2)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 25, xlsxMergedCell(`${week.title} — ${week.theme}`, r, 0, 5)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 20, xlsxMergedCell(`${week.dates[0]} — ${week.dates[1]}`, r, 0, 13)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 7); r += 1;
+
+    // بيانات الهوية الأساسية — دون تكرار الإدارة والمدرسة لأنها في الكليشة.
+    addRow(r, 23,
+      xlsxCell("اسم مُعدّ التقرير", r, 0, 1) + xlsxMergedCell(state.report?.userName || "—", r, 2, 4) +
+      xlsxCell("مدير المدرسة", r, 4, 1) + xlsxMergedCell(state.report?.principalName || "—", r, 6, 4)
+    );
+    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    addRow(r, 23,
+      xlsxCell("العام الدراسي", r, 0, 1) + xlsxMergedCell(state.report?.academicYear || "—", r, 2, 4) +
+      xlsxCell("حالة الأسبوع", r, 4, 1) + xlsxMergedCell(status, r, 6, status === "تم التنفيذ" ? 6 : 7)
+    );
+    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    addRow(r, 7); r += 1;
+
+    // الخطة اليومية — خمسة أيام واضحة.
+    addRow(r, 24, xlsxMergedCell("الخطة اليومية للأسبوع", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 23,
+      xlsxCell("اليوم", r, 0, 8) + xlsxCell("التاريخ", r, 1, 8) +
+      xlsxMergedCell("البرنامج / النشاط والهدف", r, 2, 8) +
+      xlsxMergedCell("خطة التنفيذ", r, 4, 8) +
+      xlsxCell("الحالة", r, 6, 8) + xlsxCell("الملاحظات", r, 7, 8)
+    );
+    merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); r += 1;
+    for (const day of dailyPlans) {
+      const activityAndGoal = [day.activity, day.objective ? `الهدف: ${day.objective}` : ""].filter(Boolean).join(" — ") || "—";
+      const dayStatus = day.done ? "تم التنفيذ" : (dayPlanHasContent(day) ? "مخطط" : "—");
+      const statusStyle = day.done ? 6 : (dayPlanHasContent(day) ? 7 : 4);
+      addRow(r, 44,
+        xlsxCell(day.name, r, 0, 8) + xlsxCell(day.date, r, 1, 8) +
+        xlsxMergedCell(activityAndGoal, r, 2, 0) + xlsxMergedCell(day.details || "—", r, 4, 0) +
+        xlsxCell(dayStatus, r, 6, statusStyle) + xlsxCell(day.notes || "—", r, 7, 12)
       );
-      merge(`A${rowNum}:B${rowNum}`);
-      merge(`C${rowNum}:D${rowNum}`);
-      merge(`E${rowNum}:F${rowNum}`);
-      merge(`G${rowNum}:H${rowNum}`);
+      merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); r += 1;
     }
-    addRow(9, 7);
+    addRow(r, 7); r += 1;
 
-    // بيانات البرنامج والتفعيل
-    addRow(10, 24, xlsxMergedCell("بيانات البرنامج والتفعيل", 10, 0, 3));
-    merge("A10:H10");
-    addRow(11, 42, xlsxCell("البرنامج", 11, 0, 1) + xlsxMergedCell(program, 11, 2, 0));
-    merge("A11:B11"); merge("C11:H11");
-    addRow(12, 25,
-      xlsxCell("القيمة المستهدفة", 12, 0, 1) + xlsxMergedCell(week.value, 12, 2, 4) +
-      xlsxCell("الفئة المستهدفة", 12, 4, 1) + xlsxMergedCell(record.targetGroup || "—", 12, 6, 4)
+    // بيانات البرنامج والتفعيل.
+    addRow(r, 24, xlsxMergedCell("بيانات البرنامج والتفعيل", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 46, xlsxCell("البرنامج", r, 0, 1) + xlsxMergedCell(program, r, 2, 0)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 25,
+      xlsxCell("القيمة المستهدفة", r, 0, 1) + xlsxMergedCell(week.value, r, 2, 4) +
+      xlsxCell("الفئة المستهدفة", r, 4, 1) + xlsxMergedCell(record.targetGroup || "—", r, 6, 4)
     );
-    merge("A12:B12"); merge("C12:D12"); merge("E12:F12"); merge("G12:H12");
-    addRow(13, 25,
-      xlsxCell("عدد المستفيدين", 13, 0, 1) + xlsxMergedCell(record.beneficiaries || "—", 13, 2, 4) +
-      xlsxCell("المشاركون في التنفيذ", 13, 4, 1) + xlsxMergedCell(record.participants || "—", 13, 6, 4)
+    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    addRow(r, 25,
+      xlsxCell("عدد المستفيدين", r, 0, 1) + xlsxMergedCell(record.beneficiaries || "—", r, 2, 4) +
+      xlsxCell("المشاركون في التنفيذ", r, 4, 1) + xlsxMergedCell(record.participants || "—", r, 6, 4)
     );
-    merge("A13:B13"); merge("C13:D13"); merge("E13:F13"); merge("G13:H13");
-    addRow(14, 48, xlsxCell("إجراء التنفيذ", 14, 0, 1) + xlsxMergedCell(procedure, 14, 2, 0));
-    merge("A14:B14"); merge("C14:H14");
-    addRow(15, 23, xlsxMergedCell("الأفكار المختارة", 15, 0, 3));
-    merge("A15:H15");
-    addRow(16, 42, xlsxMergedCell(ideas, 16, 0, 12));
-    merge("A16:H16");
-    addRow(17, 7);
+    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    addRow(r, 48, xlsxCell("إجراء التنفيذ", r, 0, 1) + xlsxMergedCell(procedure, r, 2, 0)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 23, xlsxMergedCell("الأفكار المختارة", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 42, xlsxMergedCell(ideas, r, 0, 12)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 7); r += 1;
 
-    // مؤشرات الأثر
-    addRow(18, 24, xlsxMergedCell("مؤشرات تحقيق الأهداف والأثر", 18, 0, 3));
-    merge("A18:H18");
-    addRow(19, 22,
-      xlsxMergedCell("المشاركة", 19, 0, 8) +
-      xlsxMergedCell("تحقق الهدف", 19, 3, 8) +
-      xlsxMergedCell("رضا المستفيدين", 19, 6, 8)
+    // مؤشرات الأثر.
+    addRow(r, 24, xlsxMergedCell("مؤشرات تحقيق الأهداف والأثر", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 22,
+      xlsxMergedCell("المشاركة", r, 0, 8) + xlsxMergedCell("تحقق الهدف", r, 3, 8) + xlsxMergedCell("رضا المستفيدين", r, 6, 8)
     );
-    merge("A19:C19"); merge("D19:F19"); merge("G19:H19");
+    merge(`A${r}:C${r}`); merge(`D${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
     const p1 = excelPercentValue(indicator.participation);
     const p2 = excelPercentValue(indicator.achievement);
     const p3 = excelPercentValue(indicator.satisfaction);
-    addRow(20, 30,
-      (p1 == null ? xlsxMergedCell("—", 20, 0, 9) : xlsxNumberCell(p1, 20, 0, 9)) +
-      (p2 == null ? xlsxMergedCell("—", 20, 3, 10) : xlsxNumberCell(p2, 20, 3, 10)) +
-      (p3 == null ? xlsxMergedCell("—", 20, 6, 11) : xlsxNumberCell(p3, 20, 6, 11))
+    addRow(r, 30,
+      (p1 == null ? xlsxMergedCell("—", r, 0, 9) : xlsxNumberCell(p1, r, 0, 9)) +
+      (p2 == null ? xlsxMergedCell("—", r, 3, 10) : xlsxNumberCell(p2, r, 3, 10)) +
+      (p3 == null ? xlsxMergedCell("—", r, 6, 11) : xlsxNumberCell(p3, r, 6, 11))
     );
-    merge("A20:C20"); merge("D20:F20"); merge("G20:H20");
-    addRow(21, 36, xlsxCell("الأثر الملحوظ", 21, 0, 1) + xlsxMergedCell(indicator.impactNote || "—", 21, 2, 12));
-    merge("A21:B21"); merge("C21:H21");
-    addRow(22, 7);
+    merge(`A${r}:C${r}`); merge(`D${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    addRow(r, 38, xlsxCell("الأثر الملحوظ", r, 0, 1) + xlsxMergedCell(indicator.impactNote || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 7); r += 1;
 
-    // الشواهد والعوائق والملاحظات
-    addRow(23, 24, xlsxMergedCell("الشواهد والعوائق والملاحظات", 23, 0, 3));
-    merge("A23:H23");
-    addRow(24, 42, xlsxCell("شواهد التنفيذ", 24, 0, 1) + xlsxMergedCell(record.evidenceText || "—", 24, 2, 12));
-    merge("A24:B24"); merge("C24:H24");
-    addRow(25, 34, xlsxCell("العوائق", 25, 0, 1) + xlsxMergedCell(record.obstacles || "—", 25, 2, 12));
-    merge("A25:B25"); merge("C25:H25");
-    addRow(26, 36, xlsxCell("ملاحظات عامة", 26, 0, 1) + xlsxMergedCell(record.notes || "—", 26, 2, 12));
-    merge("A26:B26"); merge("C26:H26");
-    addRow(27, 7);
+    // الشواهد والعوائق والملاحظات.
+    addRow(r, 24, xlsxMergedCell("الشواهد والعوائق والملاحظات", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 42, xlsxCell("شواهد التنفيذ", r, 0, 1) + xlsxMergedCell(record.evidenceText || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 34, xlsxCell("العوائق", r, 0, 1) + xlsxMergedCell(record.obstacles || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 36, xlsxCell("ملاحظات عامة", r, 0, 1) + xlsxMergedCell(record.notes || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
+    addRow(r, 7); r += 1;
 
-    // الصور: شبكية 2 أعمدة، وآخر صورة مفردة تتوسط العرض.
-    addRow(28, 24, xlsxMergedCell("صور الشواهد والتوثيق", 28, 0, 3));
-    merge("A28:H28");
-    addRow(29, 20, xlsxMergedCell(photos.length ? `عدد الصور المرفقة: ${arNum(photos.length)}` : "لا توجد صور توثيق مضافة في الجلسة الحالية.", 29, 0, 14));
-    merge("A29:H29");
-
-    const photoStartRow = 30;
+    // الصور.
+    const photoTitleRow = r;
+    addRow(r, 24, xlsxMergedCell("صور الشواهد والتوثيق", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
+    addRow(r, 20, xlsxMergedCell(photos.length ? `عدد الصور المرفقة: ${arNum(photos.length)}` : "لا توجد صور توثيق مضافة في الجلسة الحالية.", r, 0, 14)); merge(`A${r}:H${r}`); r += 1;
+    const photoStartRow = r;
     const photoBlocks = Math.max(1, Math.ceil(photos.length / 2));
     const photoRows = photoBlocks * 8;
     for (let rr = photoStartRow; rr < photoStartRow + photoRows; rr += 1) addRow(rr, 15);
-    const footerRow = photoStartRow + photoRows;
-    addRow(footerRow, 22, xlsxMergedCell("أ/ فاطمة هزازي", footerRow, 0, 13));
-    merge(`A${footerRow}:H${footerRow}`);
+    r = photoStartRow + photoRows;
+    const footerRow = r;
+    addRow(footerRow, 23, xlsxMergedCell("أ/ فاطمة هزازي — مساعد الموجه الطلابي", footerRow, 0, 13)); merge(`A${footerRow}:H${footerRow}`);
 
+    // الرسومات: شعار التقرير وصور الشواهد.
     const drawingPictures = [];
     const drawingRels = [];
     let picId = 1;
     let relIdCounter = 1;
     if (logoData && logoMediaName && logoFit) {
       const relId = `rId${relIdCounter++}`;
-      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/${logoMediaName}" Id="${relId}"/>`);
-      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: "شعار التقرير", col: 6, row: 0, cx: logoFit.cx, cy: logoFit.cy, colOff: 90000, rowOff: 40000 }));
+      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logoMediaName}" Id="${relId}"/>`);
+      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: "شعار التقرير", col: 0, row: 0, cx: logoFit.cx, cy: logoFit.cy, colOff: 170000, rowOff: 85000 }));
     }
 
     for (let index = 0; index < photos.length; index += 1) {
@@ -2536,33 +2914,31 @@ async function exportExcel(selection = null) {
       const isOddLast = photos.length % 2 === 1 && index === photos.length - 1;
       const block = Math.floor(index / 2);
       const anchorRow = photoStartRow - 1 + block * 8;
-      const maxW = isOddLast ? 5.4 : 3.0;
-      const maxH = 1.55;
-      const fit = fitImageEmu(dims.width, dims.height, maxW, maxH);
+      const fit = fitImageEmu(dims.width, dims.height, isOddLast ? 5.4 : 3.0, 1.55);
       const relId = `rId${relIdCounter++}`;
-      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/${mediaName}" Id="${relId}"/>`);
+      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}" Id="${relId}"/>`);
       const col = isOddLast ? 1 : (index % 2 === 0 ? 0 : 4);
-      const colOff = isOddLast ? 180000 : 100000;
-      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: photo.name || `شاهد ${index + 1}`, col, row: anchorRow, cx: fit.cx, cy: fit.cy, colOff, rowOff: 70000 }));
+      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: photo.name || `شاهد ${index + 1}`, col, row: anchorRow, cx: fit.cx, cy: fit.cy, colOff: isOddLast ? 180000 : 100000, rowOff: 70000 }));
     }
 
     const hasDrawing = drawingPictures.length > 0;
     const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>` : "";
-    const columns = Array.from({ length: 8 }, (_, i) => `<col min="${i + 1}" max="${i + 1}" width="${i === 0 || i === 1 ? 12 : 13.2}" customWidth="1"/>`).join("");
+    const columns = [11, 15, 15, 15, 15, 15, 14, 17].map((width, i) => `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`).join("");
     const printEndRow = footerRow;
+    const freezeRow = 13;
 
     const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheetPr><pageSetUpPr fitToPage="1" autoPageBreaks="0"/></sheetPr>
   <dimension ref="A1:H${printEndRow}"/>
-  <sheetViews><sheetView workbookViewId="0" rightToLeft="1" zoomScale="90" zoomScaleNormal="90"/></sheetViews>
+  <sheetViews><sheetView workbookViewId="0" rightToLeft="1" zoomScale="90" zoomScaleNormal="90"><pane ySplit="${freezeRow}" topLeftCell="A${freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
   <sheetFormatPr defaultRowHeight="18"/>
   <cols>${columns}</cols>
   <sheetData>${rows.join("")}</sheetData>
   ${mergeXml}
   <printOptions horizontalCentered="1" verticalCentered="0"/>
-  <pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.15" footer="0.15"/>
-  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1" horizontalDpi="300" verticalDpi="300"/>
+  <pageMargins left="0.25" right="0.25" top="0.32" bottom="0.35" header="0.15" footer="0.18"/>
+  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>
   <headerFooter differentFirst="0" differentOddEven="0"><oddFooter>&amp;Cأ/ فاطمة هزازي</oddFooter></headerFooter>
   ${hasDrawing ? '<drawing r:id="rId1"/>' : ""}
 </worksheet>`;
@@ -2575,7 +2951,7 @@ async function exportExcel(selection = null) {
       const drawingRelXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${drawingRels.join("")}</Relationships>`;
       entries.push({ name: `xl/drawings/drawing${sheetNumber}.xml`, data: drawingXml });
       entries.push({ name: `xl/drawings/_rels/drawing${sheetNumber}.xml.rels`, data: drawingRelXml });
-      entries.push({ name: `xl/worksheets/_rels/sheet${sheetNumber}.xml.rels`, data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="/xl/drawings/drawing${sheetNumber}.xml" Id="rId1"/></Relationships>` });
+      entries.push({ name: `xl/worksheets/_rels/sheet${sheetNumber}.xml.rels`, data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${sheetNumber}.xml" Id="rId1"/></Relationships>` });
       contentOverrides.push(`<Override PartName="/xl/drawings/drawing${sheetNumber}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
     }
 
@@ -2607,8 +2983,9 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v12.xlsx`);
   toast(selectedWeeks.length === 1
-    ? "تم تصدير تقرير Excel احترافي للأسبوع المحدد — RTL + A4 + الشواهد والصور"
-    : "تم تصدير Excel احترافي؛ كل أسبوع مُعبّأ في ورقة مستقلة ومهيأة للطباعة A4");
+    ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
+    : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
 }
+
