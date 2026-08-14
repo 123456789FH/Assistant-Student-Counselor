@@ -7,7 +7,7 @@
   <meta name="description" content="مساعد تفاعلي آمن للتخطيط لبرامج التوجيه الطلابي والقيم، مع بنك أفكار، مؤشرات أثر، تقارير قابلة للتصدير، ومساعد توثيق منظم." />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; manifest-src 'self'; media-src 'none'; frame-src 'none'" />
   <meta name="referrer" content="no-referrer" />
-  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٥</title>
+  <title>مساعد الموجه الطلابي | الخطة التفاعلية — الإصدار ١٦</title>
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png" />
   <link rel="apple-touch-icon" href="icon-192.png" />
@@ -70,18 +70,6 @@
           <h2>«أثري يبدأ مني»</h2>
           <p>كل أسبوع يفتح في مساحة مستقلة وواضحة تضم أيامه وتواريخه وخطتك اليومية، ثم البرامج والقيم والمتابعة والتوثيق والتصدير الاحترافي.</p>
         </div>
-        <div class="legend" aria-label="دليل الرموز">
-          <span>🎯 برامج</span>
-          <span>💡 أفكار تنفيذ</span>
-          <span>💎 قيم</span>
-          <span>📸 توثيق مؤقت</span>
-          <span>📊 قياس أثر</span>
-          <span>🧾 مساعد التوثيق</span>
-          <span>📷 شواهد تنفيذ A4</span>
-          <span>🧩 Word قابل للتعبئة</span>
-          <span>🔍 مراجع ذكي قبل التصدير</span>
-          <span>🔗 ربط الخطة بالتقرير والشواهد</span>
-        </div>
       </section>
 
       <details class="privacy-card">
@@ -121,7 +109,7 @@
             <h2 id="programCenterTitle">مركز البرامج والتقارير</h2>
             <p class="section-description">تابعي البرامج من الخطة إلى التقرير ثم الشواهد دون إعادة إدخال البيانات، وابحثي وصفي النتائج حسب المجال والحالة وجاهزية التوثيق.</p>
           </div>
-          <span class="program-center-chip">الإصدار ١٥</span>
+          <span class="program-center-chip">الإصدار ١٦</span>
         </div>
 
         <div id="programCenterStats" class="program-center-stats" aria-live="polite"></div>
@@ -143,7 +131,7 @@
             <h2 id="weeklyWorkspaceTitle">خطتي أسبوعًا بعد أسبوع</h2>
             <p class="section-description">اختاري الأسبوع من القائمة؛ سيظهر وحده مع الأيام والتواريخ ومساحة واضحة لخطة كل يوم، ثم أدوات البرامج والقيم والمتابعة.</p>
           </div>
-          <span class="version-chip">الإصدار ١٥</span>
+          <span class="version-chip">الإصدار ١٦</span>
         </div>
         <div class="week-navigator" aria-label="التنقل بين الأسابيع">
           <button class="week-nav-btn" id="nextWeekBtn" type="button" aria-label="الأسبوع التالي">التالي ←</button>
@@ -221,14 +209,6 @@
               <div id="smartReviewList" class="smart-review-list"></div>
               <small>المراجع ينبه فقط ولا يمنع التصدير، ولا ينشئ بيانات غير مدخلة.</small>
             </section>
-            <div class="program-report-feature-list">
-              <span>✓ A4 عمودي وRTL</span>
-              <span>✓ جداول Word أصلية</span>
-              <span>✓ حقول تعبئة يدوية</span>
-              <span>✓ قوائم Word منسدلة</span>
-              <span>✓ أنماط قابلة للتعديل الجماعي</span>
-              <span>✓ شواهد وصور من الجلسة عند التصدير المكتمل</span>
-            </div>
           </aside>
         </div>
       </section>
@@ -238,7 +218,7 @@
           <div>
             <span class="eyebrow">توثيق مدرسي احترافي</span>
             <h2 id="evidenceStudioTitle">نموذج شواهد تنفيذ برنامج مدرسي</h2>
-            <p class="section-description">أنشئ صفحة شواهد مستقلة للأسبوع الحالي: أربع صور واضحة في كل صفحة A4، مع بيانات البرنامج ووصف كل شاهد وملخص التنفيذ، ثم صدّرها Word أو PDF أو PNG عالي الدقة.</p>
+            <p class="section-description">أنشئ صفحة شواهد مستقلة للأسبوع الحالي: أربع صور واضحة في كل صفحة A4، مع بيانات البرنامج ووصف كل شاهد وملخص التنفيذ، ثم صدّرها Word أو PDF مباشر أو PNG عالي الدقة.</p>
           </div>
           <span class="evidence-week-chip" id="evidenceWeekChip">الأسبوع</span>
         </div>
@@ -278,7 +258,7 @@
 
             <div class="evidence-studio-actions">
               <button class="btn btn--primary" id="exportEvidenceWordBtn" type="button">📝 Word للشواهد</button>
-              <button class="btn" id="printEvidencePdfBtn" type="button">🖨️ PDF / طباعة A4</button>
+              <button class="btn" id="printEvidencePdfBtn" type="button">📄 تنزيل PDF مباشر</button>
               <button class="btn btn--soft" id="exportEvidencePngBtn" type="button">🖼️ PNG عالي الدقة</button>
             </div>
             <p class="evidence-logo-guidance">🏛️ لإظهار شعار وزارة التعليم أو الجهة في رأس نموذج الشواهد، ارفعي الشعار المعتمد من «إعدادات التقرير».</p>
@@ -294,10 +274,14 @@
 
     </main>
 
-    <footer class="footer">
-      <strong>أ/ فاطمة هزازي</strong>
-      <span>•</span>
-      <span>مساعد الموجه الطلابي — الإصدار ١٥</span>
+    <footer class="footer footer--credits">
+      <span class="footer-credit"><b>فكرة وتصميم:</b> <strong>أ/ فاطمة هزازي</strong></span>
+      <span class="footer-sep">•</span>
+      <span class="footer-credit"><b>بمساعدة الأستاذ/</b> عبد العزيز العبد الجبار</span>
+      <span class="footer-sep">•</span>
+      <span>ملتقى التعليم التفاعلي</span>
+      <span class="footer-sep">•</span>
+      <span>ملتقيات معلمي ومعلمات الرياضيات</span>
     </footer>
   </div>
 

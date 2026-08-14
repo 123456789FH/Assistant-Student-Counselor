@@ -436,7 +436,7 @@ function downloadBlob(content, mime, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 function keyFor(weekId, type, index) {
@@ -1843,7 +1843,7 @@ async function printWeekReport(week) {
     ${reportHeaderHtml(`بطاقة التوثيق الأسبوعية — ${week.title}`, week.theme)}
     ${reportIdentityMeta(`<div><b>الفترة:</b> ${escapeHtml(week.dates[0])} – ${escapeHtml(week.dates[1])}</div><div><b>الحالة:</b> <span class="status">${status}</span></div>`)}
     ${buildWeekSummaryHtml(week, { includePhotos: true, detailed: true })}
-    <footer>أ/ فاطمة هزازي</footer>
+    <footer>فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات</footer>
   </body></html>`;
   win.document.open();
   win.document.write(html);
@@ -1872,7 +1872,7 @@ function buildFinalReportHtml({ autoPrint = false, includePhotos = false } = {})
     ${reportHeaderHtml("التقرير الختامي — «أثري يبدأ مني»", "تقرير منظم للتخطيط والتنفيذ وقياس الأثر")}
     ${reportIdentityMeta(`<div><b>الأسابيع المنفذة:</b> ${arNum(completedCount)} من ٧</div><div><b>صور التوثيق المؤقتة الحالية:</b> ${arNum(totalEvidence)}</div>`)}
     ${sections}
-    <footer>أ/ فاطمة هزازي</footer>
+    <footer>فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات</footer>
     ${autoPrint ? '<script>window.onload=()=>setTimeout(()=>window.print(),250)<\\/script>' : ""}
   </body></html>`;
 }
@@ -2681,7 +2681,7 @@ async function exportWord(selection = null) {
         reportParts.push(docxImageParagraphV6(relId, docPrCounter++, photo.name || `شاهد ${index + 1}`, fit.cx, fit.cy));
       }
     }
-    reportParts.push(docxParagraph("أ/ فاطمة هزازي", { bold: true, size: 20, center: true, spacingAfter: 0 }));
+    reportParts.push(docxParagraph("فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات", { bold: true, size: 16, center: true, spacingAfter: 0 }));
   }
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -2695,7 +2695,7 @@ ${reportParts.join("")}
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="20"/><w:szCs w:val="20"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="80" w:line="300" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
 
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(weekExportTitle(selectedWeeks))}</dc:title><dc:subject>الخطة التفاعلية لبرامج التوجيه الطلابي والقيم</dc:subject><dc:creator>مساعد الموجه الطلابي</dc:creator><cp:lastModifiedBy>مساعد الموجه الطلابي</cp:lastModifiedBy><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created><dcterms:modified xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:modified></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>مساعد الموجه الطلابي</Application><AppVersion>16.0</AppVersion></Properties>`;
 
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
@@ -2709,7 +2709,7 @@ ${reportParts.join("")}
   ];
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v15.docx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Word-احترافي-v16.docx`);
   setStatus("تم تجهيز Word الاحترافي");
   toast(selectedWeeks.length === 1 ? "تم تصدير Word احترافي للأسبوع المحدد" : "تم تصدير Word؛ كل أسبوع يبدأ في صفحة مستقلة");
 }
@@ -2939,7 +2939,7 @@ async function exportExcel(selection = null) {
     for (let rr = photoStartRow; rr < photoStartRow + photoRows; rr += 1) addRow(rr, 15);
     r = photoStartRow + photoRows;
     const footerRow = r;
-    addRow(footerRow, 23, xlsxMergedCell("أ/ فاطمة هزازي — مساعد الموجه الطلابي", footerRow, 0, 13)); merge(`A${footerRow}:H${footerRow}`);
+    addRow(footerRow, 23, xlsxMergedCell("فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات", footerRow, 0, 13)); merge(`A${footerRow}:H${footerRow}`);
 
     // الرسومات: شعار التقرير وصور الشواهد.
     const drawingPictures = [];
@@ -2987,7 +2987,7 @@ async function exportExcel(selection = null) {
   <printOptions horizontalCentered="1" verticalCentered="0"/>
   <pageMargins left="0.25" right="0.25" top="0.32" bottom="0.35" header="0.15" footer="0.18"/>
   <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>
-  <headerFooter differentFirst="0" differentOddEven="0"><oddFooter>&amp;Cأ/ فاطمة هزازي</oddFooter></headerFooter>
+  <headerFooter differentFirst="0" differentOddEven="0"><oddFooter>&amp;Cفكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات</oddFooter></headerFooter>
   ${hasDrawing ? '<drawing r:id="rId1"/>' : ""}
 </worksheet>`;
 
@@ -3031,7 +3031,7 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v15.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v16.xlsx`);
   toast(selectedWeeks.length === 1
     ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
     : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
@@ -3201,7 +3201,7 @@ function wireEvidenceStudio() {
   });
   document.querySelector("#evidenceCopyReportBtn")?.addEventListener("click", () => copyEvidenceDataFromProgramReportV15(evidenceWeek(), { notify: true }));
   document.querySelector("#exportEvidenceWordBtn")?.addEventListener("click", () => exportEvidenceWord(evidenceWeek()));
-  document.querySelector("#printEvidencePdfBtn")?.addEventListener("click", () => printEvidenceDocument(evidenceWeek()));
+  document.querySelector("#printEvidencePdfBtn")?.addEventListener("click", () => exportEvidencePdf(evidenceWeek()));
   document.querySelector("#exportEvidencePngBtn")?.addEventListener("click", () => exportEvidencePng(evidenceWeek()));
 }
 
@@ -3323,7 +3323,7 @@ function evidencePageHtml(week, group, pageIndex, pageCount, { printable = false
     <div class="evidence-sheet-meta"><span><b>نوع المدرسة:</b> ${escapeHtml(data.schoolType || "—")}</span><span><b>مجال البرنامج:</b> ${escapeHtml(data.domain || "—")}</span><span><b>تاريخ التنفيذ:</b> ${escapeHtml(data.executionDate || "—")}</span><span><b>الفئة المستهدفة:</b> ${escapeHtml(data.targetGroup || "—")}</span><span><b>${labels.executor}:</b> ${escapeHtml(data.executor || "—")}</span><span><b>عدد الصور:</b> ${arNum((evidenceCache[week.id] || []).length)}</span></div>
     <div class="evidence-sheet-grid evidence-sheet-grid--count-${group.length || 0}">${photoCells}</div>
     ${footer}
-    <div class="evidence-sheet-brand"><span>ملتقى التعليم التفاعلي</span><strong>أ/ فاطمة هزازي</strong></div>
+    <div class="evidence-sheet-brand"><span>فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات</span></div>
   </article>`;
 }
 
@@ -3388,20 +3388,6 @@ function renderEvidenceGrids(weekId) {
   });
   updateEvidenceCounts(weekId);
   if (Number(state.activeWeekId) === Number(weekId)) { renderEvidenceItemsEditor(weekId); renderEvidenceDocumentPreview(evidenceWeek()); }
-}
-
-function evidencePrintStyles() {
-  return `@page{size:A4 portrait;margin:0}*{box-sizing:border-box}body{margin:0;background:#edf3f2;font-family:Tajawal,Arial,sans-serif;direction:rtl;color:#233b3a}.print-toolbar{position:sticky;top:0;z-index:9;display:flex;gap:8px;justify-content:center;padding:10px;background:#fff;border-bottom:1px solid #d6e3e0}.print-toolbar button{border:0;border-radius:10px;padding:10px 16px;background:#087f79;color:#fff;font-weight:800}.evidence-a4-page{width:210mm;min-height:297mm;margin:10mm auto;background:#fff;padding:10mm 11mm 8mm;display:flex;flex-direction:column;gap:4mm;box-shadow:0 10px 30px rgba(0,0,0,.12);page-break-after:always}.evidence-a4-page:last-child{page-break-after:auto}.evidence-sheet-header{display:grid;grid-template-columns:1fr 34mm;gap:6mm;align-items:center;border-bottom:1.5mm solid #d8b66f;padding-bottom:3mm}.evidence-official{display:flex;flex-direction:column;text-align:center;font-size:10pt;line-height:1.5}.evidence-official strong{font-size:11pt}.evidence-sheet-logo img{width:30mm;height:24mm;object-fit:contain}.evidence-sheet-title{text-align:center}.evidence-sheet-title span{color:#087f79;font-size:9pt;font-weight:800}.evidence-sheet-title h3{margin:1.5mm 0 0;font-size:16pt;color:#075f5b}.evidence-sheet-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:2mm}.evidence-sheet-meta span{border:1px solid #dce8e5;border-radius:2mm;padding:2mm;font-size:8.5pt;background:#f8fbfa}.evidence-sheet-grid{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:3mm;min-height:158mm;flex:1}.evidence-sheet-slot{margin:0;border:1px solid #d8e5e2;border-radius:3mm;padding:2mm;background:#fbfdfc;display:flex;flex-direction:column;min-height:0;overflow:hidden}.evidence-sheet-photo{height:54mm;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:2mm;overflow:hidden}.evidence-sheet-photo img{width:100%;height:100%;object-fit:contain}.evidence-sheet-slot figcaption{padding-top:1.7mm;display:grid;gap:.7mm;text-align:right;font-size:8pt;line-height:1.35}.evidence-sheet-slot figcaption strong{color:#075f5b;font-size:8.5pt}.evidence-sheet-slot figcaption small{color:#647a78}.evidence-sheet-slot--empty{align-items:center;justify-content:center;color:#9aabaa;border-style:dashed}.evidence-sheet-summary{border:1px solid #dce7e4;border-radius:3mm;padding:2.5mm;display:grid;grid-template-columns:1fr 1fr;gap:2mm;font-size:8pt}.evidence-sheet-summary>div{background:#f8fbfa;border-radius:2mm;padding:1.5mm}.evidence-sheet-summary p{margin:1mm 0;min-height:5mm}.evidence-sheet-summary .evidence-sign{grid-column:1/-1;display:flex;justify-content:space-between;gap:6mm;border-top:1px solid #d9e5e2;padding-top:2mm}.evidence-continuation{text-align:center;color:#66817e;font-size:8pt}.evidence-sheet-brand{display:flex;justify-content:space-between;border-top:1px solid #e4ecea;padding-top:2mm;color:#087f79;font-size:8pt}@media print{body{background:#fff}.print-toolbar{display:none}.evidence-a4-page{margin:0;box-shadow:none;width:210mm;height:297mm;min-height:297mm;overflow:hidden}}`;
-}
-
-function printEvidenceDocument(week) {
-  const groups = evidencePhotoGroups(week.id);
-  const pages = groups.map((group, index) => evidencePageHtml(week, group, index, groups.length, { printable: true })).join("");
-  const win = window.open("", "_blank", "noopener,noreferrer");
-  if (!win) { toast("تعذر فتح نافذة الطباعة؛ اسمح بالنوافذ المنبثقة لهذا الموقع"); return; }
-  win.document.open();
-  win.document.write(`<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>شواهد تنفيذ — ${escapeHtml(evidenceDisplayData(week).programName || week.title)}</title><style>${evidencePrintStyles()}</style></head><body><div class="print-toolbar"><button onclick="window.print()">🖨️ حفظ / طباعة PDF</button></div>${pages}</body></html>`);
-  win.document.close();
 }
 
 function evidenceDocxRawCell(innerXml, { width = 4700, fill = "FFFFFF", margin = 70, gridSpan = 1 } = {}) {
@@ -3488,16 +3474,16 @@ async function exportEvidenceWord(week) {
       parts.push(docxParagraph("",{spacingAfter:55}));
       parts.push(`<w:tbl><w:tblPr><w:tblW w:w="9400" w:type="dxa"/><w:bidiVisual/><w:tblBorders><w:top w:val="single" w:sz="4" w:color="DCE8E5"/><w:left w:val="single" w:sz="4" w:color="DCE8E5"/><w:bottom w:val="single" w:sz="4" w:color="DCE8E5"/><w:right w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideH w:val="single" w:sz="4" w:color="DCE8E5"/><w:insideV w:val="single" w:sz="4" w:color="DCE8E5"/></w:tblBorders></w:tblPr>${[["ملخص التنفيذ",data.summary],["أبرز مخرج موثّق",data.output],["ملاحظات",data.notes],[labels.signature,data.signature||data.executor],["التاريخ",data.footerDate]].map(([l,v])=>`<w:tr>${docxCell(l,{width:2200,fill:"EAF7F4",bold:true,size:17})}${docxCell(v||" ",{width:7200,size:17})}</w:tr>`).join("")}</w:tbl>`);
     }
-    parts.push(docxParagraph("أ/ فاطمة هزازي — ملتقى التعليم التفاعلي",{bold:true,size:16,center:true,spacingAfter:0}));
+    parts.push(docxParagraph("فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات",{bold:true,size:14,center:true,spacingAfter:0}));
   }
   const documentXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${parts.join("")}<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="500" w:right="560" w:bottom="500" w:left="560" w:header="280" w:footer="280" w:gutter="0"/></w:sectPr></w:body></w:document>`;
   const stylesXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Tajawal" w:hAnsi="Tajawal" w:cs="Tajawal"/><w:rtl/><w:color w:val="173F3D"/><w:sz w:val="18"/><w:szCs w:val="18"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:bidi/><w:jc w:val="right"/><w:spacing w:after="50" w:line="260" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults><w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style></w:styles>`;
   const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length?'<Default Extension="jpeg" ContentType="image/jpeg"/>':""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const coreXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(evidenceProgramTitle(data.programName))}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
-  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
+  const appXml=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>16.0</AppVersion></Properties>`;
   const entries=[{name:"[Content_Types].xml",data:contentTypes},{name:"_rels/.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>`},{name:"word/document.xml",data:documentXml},{name:"word/styles.xml",data:stylesXml},{name:"word/_rels/document.xml.rels",data:`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${relationships.join("")}</Relationships>`},{name:"docProps/core.xml",data:coreXml},{name:"docProps/app.xml",data:appXml},...mediaEntries];
   const blob=makeZip(entries,"application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v15.docx`);
+  downloadBlob(blob,blob.type,`${safeFileBase(data.schoolName||state.school||"المدرسة")}-${safeFileBase(data.programName||week.title)}-شواهد-v16.docx`);
   setStatus("تم تجهيز Word مستقل للشواهد");
 }
 
@@ -3508,6 +3494,66 @@ function canvasRoundRect(ctx,x,y,w,h,r,fill,stroke){ctx.beginPath();ctx.roundRec
 function canvasWrapRtl(ctx,text,x,y,maxWidth,lineHeight,maxLines=3){const words=String(text||"").split(/\s+/).filter(Boolean);let line="",lines=[];for(const word of words){const test=line?`${line} ${word}`:word;if(ctx.measureText(test).width>maxWidth&&line){lines.push(line);line=word}else line=test}if(line)lines.push(line);lines=lines.slice(0,maxLines);lines.forEach((l,i)=>ctx.fillText(l,x,y+i*lineHeight));return y+lines.length*lineHeight}
 function drawContained(ctx,img,x,y,w,h){const s=Math.min(w/img.width,h/img.height);const dw=img.width*s,dh=img.height*s;ctx.drawImage(img,x+(w-dw)/2,y+(h-dh)/2,dw,dh)}
 function canvasBlob(canvas,type="image/png",quality=1){return new Promise(resolve=>canvas.toBlob(resolve,type,quality))}
+
+function asciiPdfBytes(text){
+  const out=new Uint8Array(text.length);
+  for(let i=0;i<text.length;i++) out[i]=text.charCodeAt(i)&255;
+  return out;
+}
+function concatPdfBytes(parts){
+  const total=parts.reduce((n,p)=>n+p.length,0), out=new Uint8Array(total);
+  let offset=0; for(const part of parts){out.set(part,offset);offset+=part.length} return out;
+}
+function buildImagePdf(jpegPages){
+  if(!jpegPages.length) throw new Error("لا توجد صفحات لإنشاء PDF");
+  const pageW=595.28,pageH=841.89;
+  const objectCount=2+jpegPages.length*3;
+  const offsets=new Array(objectCount+1).fill(0);
+  const chunks=[]; let byteOffset=0;
+  const push=(part)=>{const bytes=typeof part==="string"?asciiPdfBytes(part):part;chunks.push(bytes);byteOffset+=bytes.length};
+  const addObject=(id,parts)=>{offsets[id]=byteOffset;push(`${id} 0 obj\n`);for(const part of parts)push(part);push(`\nendobj\n`)};
+  push(asciiPdfBytes("%PDF-1.4\n")); push(new Uint8Array([37,226,227,207,211,10]));
+  addObject(1,["<< /Type /Catalog /Pages 2 0 R >>"]);
+  const kids=jpegPages.map((_,i)=>`${3+i*3} 0 R`).join(" ");
+  addObject(2,[`<< /Type /Pages /Kids [${kids}] /Count ${jpegPages.length} >>`]);
+  jpegPages.forEach((page,i)=>{
+    const pageId=3+i*3, contentId=pageId+1, imageId=pageId+2;
+    addObject(pageId,[`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageW} ${pageH}] /Resources << /XObject << /Im0 ${imageId} 0 R >> >> /Contents ${contentId} 0 R >>`]);
+    const content=`q\n${pageW} 0 0 ${pageH} 0 0 cm\n/Im0 Do\nQ`;
+    addObject(contentId,[`<< /Length ${content.length} >>\nstream\n${content}\nendstream`]);
+    addObject(imageId,[`<< /Type /XObject /Subtype /Image /Width ${page.width} /Height ${page.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${page.bytes.length} >>\nstream\n`,page.bytes,"\nendstream"]);
+  });
+  const xrefOffset=byteOffset;
+  push(`xref\n0 ${objectCount+1}\n`);
+  push("0000000000 65535 f \n");
+  for(let id=1;id<=objectCount;id++) push(`${String(offsets[id]).padStart(10,"0")} 00000 n \n`);
+  push(`trailer\n<< /Size ${objectCount+1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  return new Blob([concatPdfBytes(chunks)],{type:"application/pdf"});
+}
+
+async function exportEvidencePdf(week){
+  const groups=evidencePhotoGroups(week.id);
+  const title=safeFileBase(evidenceDisplayData(week).programName||week.title||"شواهد-التنفيذ");
+  setStatus("جارٍ إنشاء PDF مباشر بجودة عالية…");
+  try{
+    const pages=[];
+    for(let i=0;i<groups.length;i++){
+      const canvas=await buildEvidenceCanvasPage(week,i,groups.length,groups[i]);
+      const blob=await canvasBlob(canvas,"image/jpeg",0.9);
+      if(!blob) throw new Error("تعذر تحويل صفحة الشواهد إلى صورة PDF");
+      pages.push({bytes:new Uint8Array(await blob.arrayBuffer()),width:canvas.width,height:canvas.height});
+      await new Promise(resolve=>setTimeout(resolve,0));
+    }
+    const pdf=buildImagePdf(pages);
+    downloadBlob(pdf,"application/pdf",`${title}-شواهد-v16.pdf`);
+    setStatus(`تم إنشاء PDF مباشر — ${arNum(groups.length)} صفحة A4`);
+    toast("تم إنشاء PDF مباشر دون نافذة منبثقة");
+  }catch(error){
+    console.error("تعذر إنشاء PDF الشواهد",error);
+    setStatus("تعذر إنشاء PDF");
+    toast("تعذر إنشاء PDF. جرّب تقليل عدد الصور أو حجمها ثم أعد المحاولة");
+  }
+}
 
 async function buildEvidenceCanvasPage(week,pageIndex,pageCount,group){
   await document.fonts?.ready?.catch?.(()=>{});
@@ -3529,7 +3575,7 @@ async function buildEvidenceCanvasPage(week,pageIndex,pageCount,group){
   else if(group.length===3){await drawCanvasEvidenceCell(group[0],pageIndex*4,left,startY,1090,820);await drawCanvasEvidenceCell(group[1],pageIndex*4+1,left+1170,startY,1090,820);await drawCanvasEvidenceCell(group[2],pageIndex*4+2,left,startY+885,2260,855)}
   else {const source=group.length?group:[null,null,null,null];for(let slot=0;slot<4;slot++){const row=Math.floor(slot/2),col=slot%2;await drawCanvasEvidenceCell(source[slot]||null,pageIndex*4+slot,left+col*1170,startY+row*970,1090,905)}}
   const isLast=pageIndex===pageCount-1;if(isLast){const y=2780;canvasRoundRect(ctx,110,y,2260,530,24,"#f8fbfa","#dce8e5");ctx.textAlign="right";ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("ملخص التنفيذ",2310,y+25);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.summary||"",2310,y+70,2150,34,3);ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("أبرز مخرج موثّق",2310,y+175);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.output||"",2310,y+220,2150,34,2);ctx.fillStyle="#075f5b";ctx.font="700 28px Tajawal, Arial";ctx.fillText("ملاحظات",2310,y+300);ctx.fillStyle="#344d4b";ctx.font="400 24px Tajawal, Arial";canvasWrapRtl(ctx,data.notes||"",2310,y+345,2150,34,2);ctx.font="500 25px Tajawal, Arial";ctx.fillText(`${labels.signature}: ${data.signature||data.executor||""}`,2310,y+445);ctx.textAlign="left";ctx.fillText(`التاريخ: ${data.footerDate||""}`,170,y+445)}else{ctx.textAlign="center";ctx.fillStyle="#687c7a";ctx.font="500 26px Tajawal, Arial";ctx.fillText(`صفحة شواهد إضافية • ${pageIndex+1} من ${pageCount}`,1240,3290)}
-  ctx.textAlign="right";ctx.fillStyle="#087f79";ctx.font="700 22px Tajawal, Arial";ctx.fillText("أ/ فاطمة هزازي",2320,3435);ctx.textAlign="left";ctx.fillText("ملتقى التعليم التفاعلي",160,3435);return canvas;
+  ctx.textAlign="center";ctx.fillStyle="#087f79";ctx.font="600 20px Tajawal, Arial";ctx.fillText("فكرة وتصميم: أ/ فاطمة هزازي • بمساعدة الأستاذ/ عبد العزيز العبد الجبار • ملتقى التعليم التفاعلي • ملتقيات معلمي ومعلمات الرياضيات",1240,3435);return canvas;
 }
 
 async function exportEvidencePng(week){
@@ -3980,7 +4026,7 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   const signText = fillable ? docxContentControlV14({ id: nextId(), tag: "signature", alias: labels.signature, value: data.signature, placeholder: "الاسم / التوقيع" }) : docxFormParagraphV14(data.signature || data.executor || "", { size: 18, spacingAfter: 0 });
   const dateText = fillable ? docxContentControlV14({ id: nextId(), tag: "footerDate", alias: "التاريخ", value: data.footerDate, placeholder: "التاريخ" }) : docxFormParagraphV14(data.footerDate || "", { size: 18, spacingAfter: 0 });
   parts.push(`<w:tbl>${docxProgramTablePrV14()}<w:tblGrid><w:gridCol w:w="1800"/><w:gridCol w:w="2900"/><w:gridCol w:w="1800"/><w:gridCol w:w="2900"/></w:tblGrid><w:tr>${docxProgramLabelCellV14(labels.signature,1800)}${docxProgramValueCellV14(signText,2900)}${docxProgramLabelCellV14("التاريخ",1800)}${docxProgramValueCellV14(dateText,2900)}</w:tr></w:tbl>`);
-  parts.push(docxFormParagraphV14("أ/ فاطمة هزازي — ملتقى التعليم التفاعلي", { bold: true, size: 15, color: "087F79", center: true, spacingAfter: 0 }));
+  parts.push(docxFormParagraphV14("فكرة وتصميم: أ/ فاطمة هزازي — بمساعدة الأستاذ/ عبد العزيز العبد الجبار — ملتقى التعليم التفاعلي — ملتقيات معلمي ومعلمات الرياضيات", { bold: true, size: 13, color: "087F79", center: true, spacingAfter: 0 }));
 
   const documentXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${parts.join("")}<w:sectPr><w:bidi/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="560" w:right="620" w:bottom="560" w:left="620" w:header="300" w:footer="300" w:gutter="0"/></w:sectPr></w:body></w:document>`;
   const stylesXml = programReportStylesXmlV14();
@@ -3988,7 +4034,7 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaEntries.length ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/settings.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/></Types>`;
   const reportTitle = data.programName ? `تقرير تنفيذ برنامج ${data.programName}` : "تقرير تنفيذ برنامج مدرسي";
   const coreXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(reportTitle)}</dc:title><dc:creator>مساعد الموجه الطلابي</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${new Date().toISOString()}</dcterms:created></cp:coreProperties>`;
-  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>15.0</AppVersion></Properties>`;
+  const appXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>مساعد الموجه الطلابي</Application><AppVersion>16.0</AppVersion></Properties>`;
   const entries = [
     { name: "[Content_Types].xml", data: contentTypes },
     { name: "_rels/.rels", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/extended-properties" Target="docProps/app.xml"/></Relationships>` },
@@ -4002,13 +4048,13 @@ async function exportProgramReportWord(week, { fillable = true } = {}) {
   ];
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
   const kind = fillable ? "قالب-قابل-للتعبئة" : "تقرير-مكتمل";
-  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v15.docx`);
+  downloadBlob(blob, blob.type, `${safeFileBase(data.schoolName || state.school || "المدرسة")}-${safeFileBase(data.programName || "برنامج-مدرسي")}-${kind}-v16.docx`);
   setStatus(fillable ? "تم تجهيز قالب Word القابل للتعبئة" : "تم تجهيز تقرير Word بالبيانات الحالية");
   toast(fillable ? "تم إنشاء DOCX حقيقي بحقـول تعبئة وقوائم Word منسدلة" : "تم إنشاء تقرير DOCX حقيقي بالبيانات الحالية");
 }
 
 /* ============================================================
-   v15 — ربط الخطة بالتقرير والشواهد + مراجع ذكي + مركز البرامج
+   v16 — ربط الخطة بالتقرير والشواهد + مراجع ذكي + مركز البرامج
    ============================================================ */
 
 const programCenterFiltersV15 = { search: "", domain: "", status: "" };

@@ -1,0 +1,25 @@
+رفع الإصدار ١٦ إلى مستودع Assistant-Student-Counselor
+
+استبدلي الملفات التالية في جذر المستودع:
+- index.html
+- styles.css
+- app.js
+- manifest.webmanifest
+- service-worker.js
+- forum-logo.png
+- icon-192.png
+- icon-512.png
+
+وتأكدي من بقاء ملفات الخطوط داخل:
+assets/fonts/Tajawal-Regular.ttf
+assets/fonts/Tajawal-Bold.ttf
+assets/fonts/OFL-tajawal.txt
+
+يمكن رفع ملفات التوثيق التالية أيضًا (اختياري):
+- README.txt
+- CHANGELOG-v16.txt
+- TEST-REPORT-v16.txt
+- SECURITY-CHECK-v16.txt
+- SHA256SUMS.txt
+
+مهم جدًا: استبدلي service-worker.js حتى ينتقل الكاش من v15 إلى v16. وبعد الرفع، حدّثي الصفحة مرة أو مرتين على الجهاز إذا كانت نسخة PWA القديمة مفتوحة.
