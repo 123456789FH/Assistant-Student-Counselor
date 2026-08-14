@@ -197,7 +197,7 @@ const weeks = [
 
 const storageKey = "interactive-guidance-plan-v1";
 const exportSchema = "student-counselor-assistant";
-const exportVersion = 5;
+const exportVersion = 4;
 const evidenceCache = {};
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_EVIDENCE_FILE_SIZE = 5 * 1024 * 1024;
@@ -214,8 +214,6 @@ function blankState() {
     completed: {},
     indicators: {},
     noor: {},
-    dayPlans: {},
-    activeWeekId: 1,
     report: {
       userName: "",
       principalName: "",
@@ -242,9 +240,7 @@ function loadState() {
       custom: parsed?.custom && typeof parsed.custom === "object" ? parsed.custom : {},
       completed: parsed?.completed && typeof parsed.completed === "object" ? parsed.completed : {},
       indicators: parsed?.indicators && typeof parsed.indicators === "object" ? parsed.indicators : {},
-      noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {},
-      dayPlans: parsed?.dayPlans && typeof parsed.dayPlans === "object" ? parsed.dayPlans : {},
-      activeWeekId: weeks.some((week) => week.id === Number(parsed?.activeWeekId)) ? Number(parsed.activeWeekId) : 1
+      noor: parsed?.noor && typeof parsed.noor === "object" ? parsed.noor : {}
     };
   } catch {
     return blankState();
@@ -311,95 +307,6 @@ function safeFileBase(value = "تقرير") {
   const cleaned = safeString(value, 80).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
   return cleaned || "تقرير";
 }
-
-const guidanceWeekdays = ["الأحد", "الاثنين", "الثلاثاء", "الأربعاء", "الخميس"];
-
-function toWesternDigits(value = "") {
-  return String(value)
-    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)))
-    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)));
-}
-
-function parseHijriLabel(value = "") {
-  const match = toWesternDigits(value).match(/(\d{3,4})\/(\d{1,2})\/(\d{1,2})/);
-  return match ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) } : null;
-}
-
-function formatHijriLabel(year, month, day) {
-  const western = `${String(year).padStart(4, "0")}/${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}هـ`;
-  return arNum(western);
-}
-
-function getWeekDays(week) {
-  const start = parseHijriLabel(week?.dates?.[0]);
-  const end = parseHijriLabel(week?.dates?.[1]);
-  if (!start || !end) {
-    return guidanceWeekdays.map((name, index) => ({ name, date: index === 0 ? (week?.dates?.[0] || "—") : index === 4 ? (week?.dates?.[1] || "—") : "—" }));
-  }
-  if (start.year === end.year && start.month === end.month && end.day >= start.day) {
-    return guidanceWeekdays.map((name, index) => ({ name, date: formatHijriLabel(start.year, start.month, start.day + index) }));
-  }
-  return guidanceWeekdays.map((name, index) => ({ name, date: index === 0 ? week.dates[0] : index === 4 ? week.dates[1] : "—" }));
-}
-
-function dayPlanKey(weekId, dayIndex) {
-  return `w${Number(weekId)}-day-${Number(dayIndex)}`;
-}
-
-function getDayPlan(weekId, dayIndex) {
-  const raw = state.dayPlans?.[dayPlanKey(weekId, dayIndex)] || {};
-  return {
-    activity: safeString(raw.activity, 240),
-    objective: safeString(raw.objective, 320),
-    details: safeString(raw.details, 1800),
-    notes: safeString(raw.notes, 900),
-    done: Boolean(raw.done)
-  };
-}
-
-function setDayPlanField(weekId, dayIndex, field, value) {
-  const key = dayPlanKey(weekId, dayIndex);
-  state.dayPlans[key] ||= {};
-  if (field === "done") state.dayPlans[key].done = Boolean(value);
-  else {
-    const limits = { activity: 240, objective: 320, details: 1800, notes: 900 };
-    state.dayPlans[key][field] = safeString(value, limits[field] || 1000);
-  }
-  persistState();
-}
-
-function dayPlanHasContent(plan) {
-  return Boolean(plan.done || plan.activity.trim() || plan.objective.trim() || plan.details.trim() || plan.notes.trim());
-}
-
-function getWeekDailyStats(weekId) {
-  const plans = guidanceWeekdays.map((_, index) => getDayPlan(weekId, index));
-  const planned = plans.filter(dayPlanHasContent).length;
-  const done = plans.filter((plan) => plan.done).length;
-  return { planned, done, total: guidanceWeekdays.length };
-}
-
-function getAllDailyPlanStats() {
-  return weeks.reduce((acc, week) => {
-    const stats = getWeekDailyStats(week.id);
-    acc.planned += stats.planned;
-    acc.done += stats.done;
-    acc.total += stats.total;
-    return acc;
-  }, { planned: 0, done: 0, total: 0 });
-}
-
-function dailyPlansForWeek(week) {
-  return getWeekDays(week).map((day, index) => ({ ...day, ...getDayPlan(week.id, index), index }));
-}
-
-function dailyPlanSummaryText(week) {
-  return dailyPlansForWeek(week)
-    .filter((day) => dayPlanHasContent(day))
-    .map((day) => `${day.name} ${day.date}: ${day.activity || "خطة يومية"}${day.details ? ` — ${day.details}` : ""}${day.done ? " (تم التنفيذ)" : ""}`)
-    .join(" • ");
-}
-
 
 function downloadBlob(content, mime, filename) {
   const blob = content instanceof Blob ? content : new Blob([content], { type: mime });
@@ -486,7 +393,6 @@ function buildNoorSummaryText(week) {
     `مدير المدرسة: ${state.report?.principalName || "—"}`,
     `الأسبوع: ${week.title} — ${week.theme}`,
     `الفترة: ${week.dates[0]} إلى ${week.dates[1]}`,
-    `الخطة اليومية: ${dailyPlanSummaryText(week) || "—"}`,
     `البرنامج: ${chosenProgram}`,
     `القيمة المستهدفة: ${week.value}`,
     `الفئة المستهدفة: ${record.targetGroup || "—"}`,
@@ -1045,250 +951,6 @@ function renderWeekCards() {
   });
 }
 
-
-function updateDailyPlanProgress(weekId) {
-  const stats = getWeekDailyStats(weekId);
-  document.querySelectorAll(`[data-daily-progress-week="${weekId}"]`).forEach((el) => {
-    el.textContent = `${arNum(stats.planned)} من ${arNum(stats.total)} أيام مخططة • ${arNum(stats.done)} منفذة`;
-  });
-  syncWeekNavigatorUI();
-}
-
-function createDailyField(labelText, value, placeholder, { wide = false, textarea = false, maxLength = 600, onInput } = {}) {
-  const label = document.createElement("label");
-  if (wide) label.classList.add("wide");
-  const span = document.createElement("span");
-  span.textContent = labelText;
-  const field = document.createElement(textarea ? "textarea" : "input");
-  if (!textarea) field.type = "text";
-  field.maxLength = maxLength;
-  field.placeholder = placeholder;
-  field.value = value || "";
-  field.addEventListener("input", () => onInput?.(field.value));
-  label.append(span, field);
-  return label;
-}
-
-function renderDailyPlanner(week) {
-  const section = document.createElement("section");
-  section.className = "daily-planner";
-
-  const head = document.createElement("div");
-  head.className = "daily-planner__head";
-  const copy = document.createElement("div");
-  copy.innerHTML = '<span class="eyebrow">التخطيط اليومي</span><h4>خطة أيام الأسبوع</h4>';
-  const progress = document.createElement("span");
-  progress.className = "daily-progress-pill";
-  progress.dataset.dailyProgressWeek = String(week.id);
-  head.append(copy, progress);
-
-  const grid = document.createElement("div");
-  grid.className = "day-plan-grid";
-  dailyPlansForWeek(week).forEach((day) => {
-    const card = document.createElement("article");
-    card.className = `day-plan-card${day.done ? " is-done" : ""}`;
-
-    const cardHead = document.createElement("div");
-    cardHead.className = "day-plan-head";
-    const title = document.createElement("div");
-    title.className = "day-title";
-    const badge = document.createElement("span");
-    badge.className = "day-index";
-    badge.textContent = arNum(day.index + 1);
-    const titleText = document.createElement("div");
-    const strong = document.createElement("strong");
-    strong.textContent = day.name;
-    const small = document.createElement("small");
-    small.textContent = day.date;
-    titleText.append(strong, small);
-    title.append(badge, titleText);
-
-    const doneLabel = document.createElement("label");
-    doneLabel.className = "day-done-toggle";
-    const done = document.createElement("input");
-    done.type = "checkbox";
-    done.checked = day.done;
-    const doneText = document.createElement("span");
-    doneText.textContent = "تم تنفيذ خطة اليوم";
-    done.addEventListener("change", () => {
-      setDayPlanField(week.id, day.index, "done", done.checked);
-      card.classList.toggle("is-done", done.checked);
-      updateDailyPlanProgress(week.id);
-      renderDashboard();
-    });
-    doneLabel.append(done, doneText);
-    cardHead.append(title, doneLabel);
-
-    const fields = document.createElement("div");
-    fields.className = "day-plan-fields";
-    const saveField = (fieldName) => (value) => {
-      setDayPlanField(week.id, day.index, fieldName, value);
-      updateDailyPlanProgress(week.id);
-      renderDashboard();
-    };
-    fields.append(
-      createDailyField("البرنامج / النشاط", day.activity, "مثال: لقاء توعوي أو مبادرة أو متابعة…", { maxLength: 240, onInput: saveField("activity") }),
-      createDailyField("الهدف اليومي", day.objective, "ما الهدف الذي تريد تحقيقه اليوم؟", { maxLength: 320, onInput: saveField("objective") }),
-      createDailyField("خطة التنفيذ", day.details, "اكتب خطوات التنفيذ أو ما ستقوم به خلال هذا اليوم بصورة واضحة…", { wide: true, textarea: true, maxLength: 1800, onInput: saveField("details") }),
-      createDailyField("ملاحظات اليوم", day.notes, "ملاحظة مختصرة أو متابعة مطلوبة…", { wide: true, textarea: true, maxLength: 900, onInput: saveField("notes") })
-    );
-
-    card.append(cardHead, fields);
-    grid.appendChild(card);
-  });
-
-  section.append(head, grid);
-  queueMicrotask(() => updateDailyPlanProgress(week.id));
-  return section;
-}
-
-function syncWeekNavigatorUI() {
-  const activeId = weeks.some((week) => week.id === Number(state.activeWeekId)) ? Number(state.activeWeekId) : weeks[0].id;
-  const index = weeks.findIndex((week) => week.id === activeId);
-  const selector = document.querySelector("#weekSelector");
-  if (selector) selector.value = String(activeId);
-  const prev = document.querySelector("#prevWeekBtn");
-  const next = document.querySelector("#nextWeekBtn");
-  if (prev) prev.disabled = index <= 0;
-  if (next) next.disabled = index >= weeks.length - 1;
-  const progress = document.querySelector("#weekNavProgress");
-  if (progress) {
-    const stats = getWeekDailyStats(activeId);
-    const complete = Boolean(state.completed[completionKey(activeId)]);
-    progress.textContent = `${weeks[index]?.title || "الأسبوع"} من ${arNum(weeks.length)} • ${arNum(stats.planned)}/${arNum(stats.total)} أيام مخططة${complete ? " • ✓ تم التنفيذ" : ""}`;
-  }
-}
-
-function setActiveWeek(weekId) {
-  const normalized = weeks.some((week) => week.id === Number(weekId)) ? Number(weekId) : weeks[0].id;
-  if (state.activeWeekId === normalized) return;
-  state.activeWeekId = normalized;
-  persistState();
-  renderWeekWorkspace();
-  refreshDynamicUI();
-  document.querySelector("#weekWorkspace")?.scrollIntoView({ behavior: "smooth", block: "start" });
-}
-
-function wireWeekNavigator() {
-  const selector = document.querySelector("#weekSelector");
-  if (selector) {
-    selector.innerHTML = "";
-    weeks.forEach((week) => {
-      const option = document.createElement("option");
-      option.value = String(week.id);
-      option.textContent = `${week.title} — ${week.theme} — ${week.dates[0]} إلى ${week.dates[1]}`;
-      selector.appendChild(option);
-    });
-    selector.addEventListener("change", () => setActiveWeek(Number(selector.value)));
-  }
-  document.querySelector("#prevWeekBtn")?.addEventListener("click", () => {
-    const index = weeks.findIndex((week) => week.id === Number(state.activeWeekId));
-    if (index > 0) setActiveWeek(weeks[index - 1].id);
-  });
-  document.querySelector("#nextWeekBtn")?.addEventListener("click", () => {
-    const index = weeks.findIndex((week) => week.id === Number(state.activeWeekId));
-    if (index >= 0 && index < weeks.length - 1) setActiveWeek(weeks[index + 1].id);
-  });
-  syncWeekNavigatorUI();
-}
-
-function renderWeekWorkspace() {
-  const container = document.querySelector("#weekWorkspace");
-  if (!container) return;
-  const week = weeks.find((item) => item.id === Number(state.activeWeekId)) || weeks[0];
-  state.activeWeekId = week.id;
-  container.innerHTML = "";
-
-  const article = document.createElement("article");
-  article.className = "week-focus-card";
-
-  const head = document.createElement("header");
-  head.className = "week-focus-head";
-  const copy = document.createElement("div");
-  copy.className = "week-focus-copy";
-  copy.innerHTML = `<span class="week-focus-kicker">✦ مساحة أسبوعية مستقلة</span><h3>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h3><p>${escapeHtml(week.dates[0])} إلى ${escapeHtml(week.dates[1])}</p><div class="week-focus-meta"><span>💎 ${escapeHtml(week.value)}</span><span data-week-status="${week.id}">${state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ"}</span><span data-daily-progress-week="${week.id}"></span></div>`;
-  const orb = document.createElement("div");
-  orb.className = "week-number-orb";
-  orb.textContent = arNum(week.id);
-  head.append(copy, orb);
-
-  const body = document.createElement("div");
-  body.className = "week-body";
-
-  const summary = document.createElement("div");
-  summary.className = "week-summary-strip";
-  const programsBox = document.createElement("div");
-  programsBox.className = "week-summary-box";
-  const programsTitle = document.createElement("h4");
-  programsTitle.textContent = "🎯 برامج هذا الأسبوع";
-  const programs = document.createElement("ul");
-  programs.className = "week-programs-inline";
-  week.programs.forEach((program) => {
-    const item = document.createElement("li");
-    item.textContent = program;
-    programs.appendChild(item);
-  });
-  programsBox.append(programsTitle, programs);
-  const valueBox = document.createElement("div");
-  valueBox.className = "week-summary-box";
-  const valueTitle = document.createElement("h4");
-  valueTitle.textContent = "💎 القيمة المستهدفة";
-  const value = document.createElement("div");
-  value.className = "week-value-badge";
-  value.textContent = week.value;
-  valueBox.append(valueTitle, value);
-  summary.append(programsBox, valueBox);
-
-  body.append(summary, renderDailyPlanner(week));
-
-  const tools = document.createElement("div");
-  tools.className = "week-tools-grid";
-  const programTool = document.createElement("section");
-  programTool.className = "week-tool-card";
-  const pHeading = document.createElement("h4");
-  pHeading.textContent = "💡 أفكار تنفيذ البرامج";
-  programTool.append(pHeading, renderIdeaDetails(week, "program"));
-
-  const valueTool = document.createElement("section");
-  valueTool.className = "week-tool-card";
-  const vHeading = document.createElement("h4");
-  vHeading.textContent = "💎 أفكار تفعيل القيمة";
-  valueTool.append(vHeading, renderIdeaDetails(week, "value"));
-
-  const followupTool = document.createElement("section");
-  followupTool.className = "week-tool-card week-tool-card--followup";
-  const fHeading = document.createElement("h4");
-  fHeading.textContent = "📊 متابعة الأسبوع والتوثيق";
-  followupTool.append(fHeading, renderFollowupPanel(week));
-  tools.append(programTool, valueTool, followupTool);
-  body.appendChild(tools);
-
-  const actions = document.createElement("div");
-  actions.className = "week-quick-actions";
-  const save = document.createElement("button");
-  save.className = "btn btn--primary";
-  save.type = "button";
-  save.textContent = "💾 حفظ هذا الأسبوع";
-  save.addEventListener("click", () => persistState(`تم حفظ ${week.title}`));
-  const excel = document.createElement("button");
-  excel.className = "btn btn--soft";
-  excel.type = "button";
-  excel.textContent = "📊 Excel لهذا الأسبوع";
-  excel.addEventListener("click", () => exportExcel([week]));
-  const pdf = document.createElement("button");
-  pdf.className = "btn";
-  pdf.type = "button";
-  pdf.textContent = "🖨️ تقرير PDF لهذا الأسبوع";
-  pdf.addEventListener("click", () => printWeekReport(week));
-  actions.append(save, excel, pdf);
-  body.appendChild(actions);
-
-  article.append(head, body);
-  container.appendChild(article);
-  syncWeekNavigatorUI();
-  renderEvidenceGrids(week.id);
-}
-
 function renderDashboard() {
   const dashboard = document.querySelector("#dashboard");
   const completedCount = weeks.filter((week) => Boolean(state.completed[completionKey(week.id)])).length;
@@ -1301,11 +963,9 @@ function renderDashboard() {
     ? Math.round(validAchievements.reduce((sum, value) => sum + value, 0) / validAchievements.length)
     : 0;
   const evidenceCount = weeks.reduce((sum, week) => sum + (evidenceCache[week.id]?.length || 0), 0);
-  const dailyStats = getAllDailyPlanStats();
 
   dashboard.innerHTML = `
     <div class="metric-card"><span class="metric-card__icon">✅</span><span class="metric-card__value">${arNum(completedCount)} / ٧</span><span class="metric-card__label">أسابيع تم تنفيذها</span></div>
-    <div class="metric-card"><span class="metric-card__icon">📅</span><span class="metric-card__value">${arNum(dailyStats.planned)} / ${arNum(dailyStats.total)}</span><span class="metric-card__label">أيام تمت كتابة خطتها</span></div>
     <div class="metric-card"><span class="metric-card__icon">💡</span><span class="metric-card__value">${arNum(selectedIdeas)}</span><span class="metric-card__label">أفكار تم اختيارها وتنفيذها</span></div>
     <div class="metric-card"><span class="metric-card__icon">📈</span><span class="metric-card__value">${arNum(avgAchievement)}٪</span><span class="metric-card__label">متوسط تحقق الهدف المدخل</span></div>
     <div class="metric-card"><span class="metric-card__icon">📸</span><span class="metric-card__value">${arNum(evidenceCount)}</span><span class="metric-card__label">صور توثيق مؤقتة</span></div>
@@ -1339,15 +999,15 @@ function refreshDynamicUI() {
       el.textContent = state.completed[completionKey(week.id)] ? "✓ تم التنفيذ" : "قيد التنفيذ";
     });
     updateEvidenceCounts(week.id);
-    updateDailyPlanProgress(week.id);
   });
-  syncWeekNavigatorUI();
   renderDashboard();
 }
 
 function renderAll() {
-  renderWeekWorkspace();
+  renderPlanTable();
+  renderWeekCards();
   refreshDynamicUI();
+  weeks.forEach((week) => renderEvidenceGrids(week.id));
 }
 
 function clearEvidenceCache() {
@@ -1531,16 +1191,6 @@ function reportIdentityMeta(extra = "") {
   </div>`;
 }
 
-function dailyPlanReportHtml(week) {
-  const days = dailyPlansForWeek(week).filter((day) => dayPlanHasContent(day));
-  if (!days.length) return "<p>لم تُكتب خطة يومية لهذا الأسبوع بعد.</p>";
-  return `<div class="data-grid">${days.map((day) => {
-    const pieces = [day.activity, day.objective, day.details, day.notes].filter((item) => String(item || "").trim());
-    const status = day.done ? " — ✓ تم التنفيذ" : "";
-    return `<div class="data-item wide"><b>${escapeHtml(day.name)} — ${escapeHtml(day.date)}:</b> ${displayValue(pieces.join(" • "))}${status}</div>`;
-  }).join("")}</div>`;
-}
-
 function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } = {}) {
   const indicator = getIndicator(week.id);
   const record = getNoorRecord(week.id);
@@ -1554,7 +1204,7 @@ function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } 
   const photos = evidenceCache[week.id] || [];
 
   if (!detailed) {
-    return `<section class="week-summary"><h2>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h2><p><span class="status">${status}</span> | <b>القيمة:</b> ${escapeHtml(week.value)}</p><div class="data-grid"><div class="data-item wide"><b>البرنامج:</b> ${displayValue(chosenProgram)}</div><div class="data-item wide"><b>الخطة اليومية:</b> ${displayValue(dailyPlanSummaryText(week))}</div><div class="data-item"><b>الفئة:</b> ${displayValue(record.targetGroup)}</div><div class="data-item"><b>عدد المستفيدين:</b> ${displayValue(record.beneficiaries)}</div><div class="data-item wide"><b>الإجراء:</b> ${displayValue(procedure)}</div><div class="data-item wide"><b>الشواهد:</b> ${displayValue(record.evidenceText)}</div><div class="data-item wide"><b>العوائق:</b> ${displayValue(record.obstacles)}</div></div><p><b>الأفكار المحددة:</b> ${arNum(ideas.length)} | <b>صور التوثيق المؤقتة:</b> ${arNum(photos.length)}</p><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>الرضا</div></div>${indicator.impactNote ? `<p><b>أبرز أثر:</b> ${escapeHtml(indicator.impactNote)}</p>` : ""}${record.notes ? `<p><b>ملاحظات عامة:</b> ${escapeHtml(record.notes)}</p>` : ""}</section>`;
+    return `<section class="week-summary"><h2>${escapeHtml(week.title)} — ${escapeHtml(week.theme)}</h2><p><span class="status">${status}</span> | <b>القيمة:</b> ${escapeHtml(week.value)}</p><div class="data-grid"><div class="data-item wide"><b>البرنامج:</b> ${displayValue(chosenProgram)}</div><div class="data-item"><b>الفئة:</b> ${displayValue(record.targetGroup)}</div><div class="data-item"><b>عدد المستفيدين:</b> ${displayValue(record.beneficiaries)}</div><div class="data-item wide"><b>الإجراء:</b> ${displayValue(procedure)}</div><div class="data-item wide"><b>الشواهد:</b> ${displayValue(record.evidenceText)}</div><div class="data-item wide"><b>العوائق:</b> ${displayValue(record.obstacles)}</div></div><p><b>الأفكار المحددة:</b> ${arNum(ideas.length)} | <b>صور التوثيق المؤقتة:</b> ${arNum(photos.length)}</p><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>الرضا</div></div>${indicator.impactNote ? `<p><b>أبرز أثر:</b> ${escapeHtml(indicator.impactNote)}</p>` : ""}${record.notes ? `<p><b>ملاحظات عامة:</b> ${escapeHtml(record.notes)}</p>` : ""}</section>`;
   }
 
   return `<section class="box"><h2>بيانات البرنامج والتفعيل</h2><div class="data-grid">
@@ -1565,7 +1215,6 @@ function buildWeekSummaryHtml(week, { includePhotos = false, detailed = false } 
       <div class="data-item"><b>المشاركون في التنفيذ:</b> ${displayValue(record.participants)}</div>
       <div class="data-item wide"><b>إجراء التنفيذ:</b> ${displayValue(procedure)}</div>
     </div></section>
-    <section class="box"><h2>الخطة اليومية للأسبوع</h2>${dailyPlanReportHtml(week)}</section>
     <section class="box"><h2>الأفكار المختارة</h2>${ideas.length ? `<ul>${ideas.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>` : "<p>لم يتم تحديد أفكار بعد.</p>"}</section>
     <section class="box"><h2>مؤشرات تحقيق الأهداف والأثر</h2><div class="metrics"><div class="metric"><b>${indicator.participation === "" ? "—" : `${arNum(indicator.participation)}٪`}</b>المشاركة</div><div class="metric"><b>${indicator.achievement === "" ? "—" : `${arNum(indicator.achievement)}٪`}</b>تحقق الهدف</div><div class="metric"><b>${indicator.satisfaction === "" ? "—" : `${arNum(indicator.satisfaction)}٪`}</b>رضا المستفيدين</div></div><p><b>الأثر الملحوظ:</b> ${displayValue(indicator.impactNote)}</p></section>
     <section class="box"><h2>الشواهد والعوائق والملاحظات</h2><div class="data-grid">
@@ -1813,17 +1462,6 @@ function cloneStateForWeeks(selection) {
   Object.entries(state.custom || {}).forEach(([key, value]) => {
     if (belongsToSelection(key) && Array.isArray(value)) clean.custom[key] = value.slice(0, 30).map((item) => safeString(item, 300)).filter(Boolean);
   });
-  Object.entries(state.dayPlans || {}).forEach(([key, value]) => {
-    if (!belongsToSelection(key) || !value || typeof value !== "object") return;
-    clean.dayPlans[key] = {
-      activity: safeString(value.activity, 240),
-      objective: safeString(value.objective, 320),
-      details: safeString(value.details, 1800),
-      notes: safeString(value.notes, 900),
-      done: Boolean(value.done)
-    };
-  });
-  clean.activeWeekId = selectedWeeks[0]?.id || 1;
 
   selectedWeeks.forEach((week) => {
     const key = completionKey(week.id);
@@ -1937,23 +1575,6 @@ function sanitizedImportedState(raw) {
       };
     });
   }
-  if (source.dayPlans && typeof source.dayPlans === "object") {
-    weeks.forEach((week) => {
-      guidanceWeekdays.forEach((_, dayIndex) => {
-        const key = dayPlanKey(week.id, dayIndex);
-        const item = source.dayPlans[key];
-        if (!item || typeof item !== "object") return;
-        clean.dayPlans[key] = {
-          activity: safeString(item.activity, 240),
-          objective: safeString(item.objective, 320),
-          details: safeString(item.details, 1800),
-          notes: safeString(item.notes, 900),
-          done: Boolean(item.done)
-        };
-      });
-    });
-  }
-  clean.activeWeekId = weeks.some((week) => week.id === Number(source.activeWeekId)) ? Number(source.activeWeekId) : 1;
   const report = source.report && typeof source.report === "object" ? source.report : {};
   clean.report.userName = safeString(report.userName, 120);
   clean.report.principalName = safeString(report.principalName, 120);
@@ -2119,7 +1740,7 @@ function xlsxCell(value, rowIndex, colIndex, style = 0) {
   return `<c r="${ref}" t="inlineStr"${style ? ` s="${style}"` : ""}><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
 }
 
-function exportExcelLegacy() {
+function exportExcel() {
   captureIdentity();
   persistState();
   const { headers, rows } = officeRows();
@@ -2474,7 +2095,6 @@ function init() {
   wireIdentity();
   wireToolbar();
   wireReportSettings();
-  wireWeekNavigator();
   renderAll();
   loadEvidence();
   wirePrivacyGate();
@@ -2502,7 +2122,6 @@ function weekHasReportData(week) {
     hasIndicators ||
     hasRecord ||
     hasNotes ||
-    getWeekDailyStats(week.id).planned > 0 ||
     selectedIdeasForWeek(week).length ||
     (evidenceCache[week.id] || []).length
   );
@@ -2535,7 +2154,6 @@ function weekInfoRows(week) {
   const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ");
   return [
     ["الفترة", `${week.dates[0]} - ${week.dates[1]}`],
-    ["الخطة اليومية", dailyPlanSummaryText(week) || "—"],
     ["البرنامج", program],
     ["القيمة", week.value],
     ["الفئة المستهدفة", record.targetGroup],
@@ -2698,14 +2316,13 @@ async function exportExcel(selection = null) {
   persistState();
   const selectedWeeks = exportableWeeks(selection);
   if (!selectedWeeks.length) return;
-  setStatus("جارٍ تجهيز Excel الاحترافي مع الخطة اليومية والكليشة الجديدة…");
+  setStatus("جارٍ تجهيز تقرير Excel احترافي للطباعة A4…");
 
-  // تنسيق Excel v11: شعار ثابت في مساحة مستقلة، كليشة رسمية، RTL، A4،
-  // خطة يومية واضحة، وكل أسبوع في ورقة مستقلة.
+  // تنسيق احترافي ومهيأ للطباعة: RTL + A4 + صفحة واحدة قدر الإمكان.
   // style indices:
   // 0 body, 1 label, 2 title, 3 section, 4 value, 5 subtitle,
   // 6 status-done, 7 status-pending, 8 kpi-label, 9 kpi-blue,
-  // 10 kpi-green, 11 kpi-orange, 12 note, 13 clean-center, 14 photo-note.
+  // 10 kpi-green, 11 kpi-orange, 12 note, 13 footer, 14 photo-note.
   const stylesXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <fonts count="8">
@@ -2732,14 +2349,20 @@ async function exportExcel(selection = null) {
   </fills>
   <borders count="2">
     <border><left/><right/><top/><bottom/><diagonal/></border>
-    <border><left style="thin"><color rgb="FFD4E4E1"/></left><right style="thin"><color rgb="FFD4E4E1"/></right><top style="thin"><color rgb="FFD4E4E1"/></top><bottom style="thin"><color rgb="FFD4E4E1"/></bottom><diagonal/></border>
+    <border>
+      <left style="thin"><color rgb="FFD4E4E1"/></left>
+      <right style="thin"><color rgb="FFD4E4E1"/></right>
+      <top style="thin"><color rgb="FFD4E4E1"/></top>
+      <bottom style="thin"><color rgb="FFD4E4E1"/></bottom>
+      <diagonal/>
+    </border>
   </borders>
   <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
   <cellXfs count="15">
     <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="1" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="2" fillId="2" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
-    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
+    <xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="0" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="4" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="6" fillId="6" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
@@ -2749,7 +2372,7 @@ async function exportExcel(selection = null) {
     <xf numFmtId="9" fontId="5" fillId="4" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="9" fontId="5" fillId="9" borderId="1" xfId="0" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="right" vertical="top" wrapText="1" readingOrder="2"/></xf>
-    <xf numFmtId="0" fontId="4" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
+    <xf numFmtId="0" fontId="4" fillId="5" borderId="0" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" readingOrder="2"/></xf>
     <xf numFmtId="0" fontId="7" fillId="5" borderId="1" xfId="0" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1" readingOrder="2"/></xf>
   </cellXfs>
   <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
@@ -2771,7 +2394,7 @@ async function exportExcel(selection = null) {
     logoMediaName = `image${globalMediaCounter++}.jpeg`;
     mediaMap.set(logoMediaName, logoData.bytes);
     const dims = await imageSizeFromDataUrl(logoDataUrl);
-    logoFit = fitImageEmu(dims.width, dims.height, 1.05, 1.05);
+    logoFit = fitImageEmu(dims.width, dims.height, 1.2, 1.2);
   }
 
   for (let sheetIndex = 0; sheetIndex < selectedWeeks.length; sheetIndex += 1) {
@@ -2784,126 +2407,123 @@ async function exportExcel(selection = null) {
     const procedure = record.procedure || selectedProgramIdeasForWeek(week).join(" • ") || "—";
     const ideas = selectedIdeasForWeek(week).join(" • ") || "لم يتم تحديد أفكار بعد.";
     const photos = evidenceCache[week.id] || [];
-    const dailyPlans = dailyPlansForWeek(week);
 
     const rows = [];
     const merges = [];
-    const addRow = (rowNum, height, cells = "") => rows.push(`<row r="${rowNum}" ht="${height}" customHeight="1">${cells}</row>`);
+    const addRow = (rowNum, height, cells = "") => {
+      rows.push(`<row r="${rowNum}" ht="${height}" customHeight="1">${cells}</row>`);
+    };
     const merge = (ref) => merges.push(ref);
-    let r = 1;
 
-    // الكليشة الرسمية: الشعار في مساحة مستقلة يمين الورقة (A:B في RTL)،
-    // والنصوص في مساحة C:H دون تداخل مع الصورة.
-    addRow(r, 22, xlsxCell("", r, 0, 13) + xlsxMergedCell("المملكة العربية السعودية", r, 2, 13));
-    merge(`A${r}:B${r + 3}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 22, xlsxMergedCell("وزارة التعليم", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 22, xlsxMergedCell(state.admin ? `إدارة التعليم: ${state.admin}` : "إدارة التعليم", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 22, xlsxMergedCell(state.school ? `المدرسة: ${state.school}` : "اسم المدرسة", r, 2, 13)); merge(`C${r}:H${r}`); r += 1;
+    // رأس التقرير
+    addRow(1, 28, xlsxMergedCell(`${week.title} — ${week.theme}`, 1, 0, 2));
+    addRow(2, 28);
+    merge("A1:F2");
+    merge("G1:H3");
+    addRow(3, 21, xlsxMergedCell("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", 3, 0, 5));
+    merge("A3:F3");
+    addRow(4, 6);
 
-    addRow(r, 31, xlsxMergedCell("الخطة التفاعلية لبرامج التوجيه الطلابي والقيم", r, 0, 2)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 25, xlsxMergedCell(`${week.title} — ${week.theme}`, r, 0, 5)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 20, xlsxMergedCell(`${week.dates[0]} — ${week.dates[1]}`, r, 0, 13)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 7); r += 1;
-
-    // بيانات الهوية الأساسية — دون تكرار الإدارة والمدرسة لأنها في الكليشة.
-    addRow(r, 23,
-      xlsxCell("اسم مُعدّ التقرير", r, 0, 1) + xlsxMergedCell(state.report?.userName || "—", r, 2, 4) +
-      xlsxCell("مدير المدرسة", r, 4, 1) + xlsxMergedCell(state.report?.principalName || "—", r, 6, 4)
-    );
-    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
-    addRow(r, 23,
-      xlsxCell("العام الدراسي", r, 0, 1) + xlsxMergedCell(state.report?.academicYear || "—", r, 2, 4) +
-      xlsxCell("حالة الأسبوع", r, 4, 1) + xlsxMergedCell(status, r, 6, status === "تم التنفيذ" ? 6 : 7)
-    );
-    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
-    addRow(r, 7); r += 1;
-
-    // الخطة اليومية — خمسة أيام واضحة.
-    addRow(r, 24, xlsxMergedCell("الخطة اليومية للأسبوع", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 23,
-      xlsxCell("اليوم", r, 0, 8) + xlsxCell("التاريخ", r, 1, 8) +
-      xlsxMergedCell("البرنامج / النشاط والهدف", r, 2, 8) +
-      xlsxMergedCell("خطة التنفيذ", r, 4, 8) +
-      xlsxCell("الحالة", r, 6, 8) + xlsxCell("الملاحظات", r, 7, 8)
-    );
-    merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); r += 1;
-    for (const day of dailyPlans) {
-      const activityAndGoal = [day.activity, day.objective ? `الهدف: ${day.objective}` : ""].filter(Boolean).join(" — ") || "—";
-      const dayStatus = day.done ? "تم التنفيذ" : (dayPlanHasContent(day) ? "مخطط" : "—");
-      const statusStyle = day.done ? 6 : (dayPlanHasContent(day) ? 7 : 4);
-      addRow(r, 44,
-        xlsxCell(day.name, r, 0, 8) + xlsxCell(day.date, r, 1, 8) +
-        xlsxMergedCell(activityAndGoal, r, 2, 0) + xlsxMergedCell(day.details || "—", r, 4, 0) +
-        xlsxCell(dayStatus, r, 6, statusStyle) + xlsxCell(day.notes || "—", r, 7, 12)
+    // بيانات التقرير الرئيسية
+    const metaRows = [
+      [5, "اسم مُعدّ التقرير", state.report?.userName || "—", "إدارة التعليم", state.admin || "—"],
+      [6, "اسم المدرسة", state.school || "—", "مدير المدرسة", state.report?.principalName || "—"],
+      [7, "العام الدراسي", state.report?.academicYear || "—", "الفترة", `${week.dates[0]} – ${week.dates[1]}`],
+      [8, "حالة التنفيذ", status, "عنوان الأسبوع", week.theme]
+    ];
+    for (const [rowNum, label1, value1, label2, value2] of metaRows) {
+      const statusStyle = rowNum === 8 ? (status === "تم التنفيذ" ? 6 : 7) : 4;
+      addRow(rowNum, 23,
+        xlsxCell(label1, rowNum, 0, 1) +
+        xlsxMergedCell(value1, rowNum, 2, statusStyle) +
+        xlsxCell(label2, rowNum, 4, 1) +
+        xlsxMergedCell(value2, rowNum, 6, 4)
       );
-      merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); r += 1;
+      merge(`A${rowNum}:B${rowNum}`);
+      merge(`C${rowNum}:D${rowNum}`);
+      merge(`E${rowNum}:F${rowNum}`);
+      merge(`G${rowNum}:H${rowNum}`);
     }
-    addRow(r, 7); r += 1;
+    addRow(9, 7);
 
-    // بيانات البرنامج والتفعيل.
-    addRow(r, 24, xlsxMergedCell("بيانات البرنامج والتفعيل", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 46, xlsxCell("البرنامج", r, 0, 1) + xlsxMergedCell(program, r, 2, 0)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 25,
-      xlsxCell("القيمة المستهدفة", r, 0, 1) + xlsxMergedCell(week.value, r, 2, 4) +
-      xlsxCell("الفئة المستهدفة", r, 4, 1) + xlsxMergedCell(record.targetGroup || "—", r, 6, 4)
+    // بيانات البرنامج والتفعيل
+    addRow(10, 24, xlsxMergedCell("بيانات البرنامج والتفعيل", 10, 0, 3));
+    merge("A10:H10");
+    addRow(11, 42, xlsxCell("البرنامج", 11, 0, 1) + xlsxMergedCell(program, 11, 2, 0));
+    merge("A11:B11"); merge("C11:H11");
+    addRow(12, 25,
+      xlsxCell("القيمة المستهدفة", 12, 0, 1) + xlsxMergedCell(week.value, 12, 2, 4) +
+      xlsxCell("الفئة المستهدفة", 12, 4, 1) + xlsxMergedCell(record.targetGroup || "—", 12, 6, 4)
     );
-    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
-    addRow(r, 25,
-      xlsxCell("عدد المستفيدين", r, 0, 1) + xlsxMergedCell(record.beneficiaries || "—", r, 2, 4) +
-      xlsxCell("المشاركون في التنفيذ", r, 4, 1) + xlsxMergedCell(record.participants || "—", r, 6, 4)
+    merge("A12:B12"); merge("C12:D12"); merge("E12:F12"); merge("G12:H12");
+    addRow(13, 25,
+      xlsxCell("عدد المستفيدين", 13, 0, 1) + xlsxMergedCell(record.beneficiaries || "—", 13, 2, 4) +
+      xlsxCell("المشاركون في التنفيذ", 13, 4, 1) + xlsxMergedCell(record.participants || "—", 13, 6, 4)
     );
-    merge(`A${r}:B${r}`); merge(`C${r}:D${r}`); merge(`E${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
-    addRow(r, 48, xlsxCell("إجراء التنفيذ", r, 0, 1) + xlsxMergedCell(procedure, r, 2, 0)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 23, xlsxMergedCell("الأفكار المختارة", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 42, xlsxMergedCell(ideas, r, 0, 12)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 7); r += 1;
+    merge("A13:B13"); merge("C13:D13"); merge("E13:F13"); merge("G13:H13");
+    addRow(14, 48, xlsxCell("إجراء التنفيذ", 14, 0, 1) + xlsxMergedCell(procedure, 14, 2, 0));
+    merge("A14:B14"); merge("C14:H14");
+    addRow(15, 23, xlsxMergedCell("الأفكار المختارة", 15, 0, 3));
+    merge("A15:H15");
+    addRow(16, 42, xlsxMergedCell(ideas, 16, 0, 12));
+    merge("A16:H16");
+    addRow(17, 7);
 
-    // مؤشرات الأثر.
-    addRow(r, 24, xlsxMergedCell("مؤشرات تحقيق الأهداف والأثر", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 22,
-      xlsxMergedCell("المشاركة", r, 0, 8) + xlsxMergedCell("تحقق الهدف", r, 3, 8) + xlsxMergedCell("رضا المستفيدين", r, 6, 8)
+    // مؤشرات الأثر
+    addRow(18, 24, xlsxMergedCell("مؤشرات تحقيق الأهداف والأثر", 18, 0, 3));
+    merge("A18:H18");
+    addRow(19, 22,
+      xlsxMergedCell("المشاركة", 19, 0, 8) +
+      xlsxMergedCell("تحقق الهدف", 19, 3, 8) +
+      xlsxMergedCell("رضا المستفيدين", 19, 6, 8)
     );
-    merge(`A${r}:C${r}`); merge(`D${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
+    merge("A19:C19"); merge("D19:F19"); merge("G19:H19");
     const p1 = excelPercentValue(indicator.participation);
     const p2 = excelPercentValue(indicator.achievement);
     const p3 = excelPercentValue(indicator.satisfaction);
-    addRow(r, 30,
-      (p1 == null ? xlsxMergedCell("—", r, 0, 9) : xlsxNumberCell(p1, r, 0, 9)) +
-      (p2 == null ? xlsxMergedCell("—", r, 3, 10) : xlsxNumberCell(p2, r, 3, 10)) +
-      (p3 == null ? xlsxMergedCell("—", r, 6, 11) : xlsxNumberCell(p3, r, 6, 11))
+    addRow(20, 30,
+      (p1 == null ? xlsxMergedCell("—", 20, 0, 9) : xlsxNumberCell(p1, 20, 0, 9)) +
+      (p2 == null ? xlsxMergedCell("—", 20, 3, 10) : xlsxNumberCell(p2, 20, 3, 10)) +
+      (p3 == null ? xlsxMergedCell("—", 20, 6, 11) : xlsxNumberCell(p3, 20, 6, 11))
     );
-    merge(`A${r}:C${r}`); merge(`D${r}:F${r}`); merge(`G${r}:H${r}`); r += 1;
-    addRow(r, 38, xlsxCell("الأثر الملحوظ", r, 0, 1) + xlsxMergedCell(indicator.impactNote || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 7); r += 1;
+    merge("A20:C20"); merge("D20:F20"); merge("G20:H20");
+    addRow(21, 36, xlsxCell("الأثر الملحوظ", 21, 0, 1) + xlsxMergedCell(indicator.impactNote || "—", 21, 2, 12));
+    merge("A21:B21"); merge("C21:H21");
+    addRow(22, 7);
 
-    // الشواهد والعوائق والملاحظات.
-    addRow(r, 24, xlsxMergedCell("الشواهد والعوائق والملاحظات", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 42, xlsxCell("شواهد التنفيذ", r, 0, 1) + xlsxMergedCell(record.evidenceText || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 34, xlsxCell("العوائق", r, 0, 1) + xlsxMergedCell(record.obstacles || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 36, xlsxCell("ملاحظات عامة", r, 0, 1) + xlsxMergedCell(record.notes || "—", r, 2, 12)); merge(`A${r}:B${r}`); merge(`C${r}:H${r}`); r += 1;
-    addRow(r, 7); r += 1;
+    // الشواهد والعوائق والملاحظات
+    addRow(23, 24, xlsxMergedCell("الشواهد والعوائق والملاحظات", 23, 0, 3));
+    merge("A23:H23");
+    addRow(24, 42, xlsxCell("شواهد التنفيذ", 24, 0, 1) + xlsxMergedCell(record.evidenceText || "—", 24, 2, 12));
+    merge("A24:B24"); merge("C24:H24");
+    addRow(25, 34, xlsxCell("العوائق", 25, 0, 1) + xlsxMergedCell(record.obstacles || "—", 25, 2, 12));
+    merge("A25:B25"); merge("C25:H25");
+    addRow(26, 36, xlsxCell("ملاحظات عامة", 26, 0, 1) + xlsxMergedCell(record.notes || "—", 26, 2, 12));
+    merge("A26:B26"); merge("C26:H26");
+    addRow(27, 7);
 
-    // الصور.
-    const photoTitleRow = r;
-    addRow(r, 24, xlsxMergedCell("صور الشواهد والتوثيق", r, 0, 3)); merge(`A${r}:H${r}`); r += 1;
-    addRow(r, 20, xlsxMergedCell(photos.length ? `عدد الصور المرفقة: ${arNum(photos.length)}` : "لا توجد صور توثيق مضافة في الجلسة الحالية.", r, 0, 14)); merge(`A${r}:H${r}`); r += 1;
-    const photoStartRow = r;
+    // الصور: شبكية 2 أعمدة، وآخر صورة مفردة تتوسط العرض.
+    addRow(28, 24, xlsxMergedCell("صور الشواهد والتوثيق", 28, 0, 3));
+    merge("A28:H28");
+    addRow(29, 20, xlsxMergedCell(photos.length ? `عدد الصور المرفقة: ${arNum(photos.length)}` : "لا توجد صور توثيق مضافة في الجلسة الحالية.", 29, 0, 14));
+    merge("A29:H29");
+
+    const photoStartRow = 30;
     const photoBlocks = Math.max(1, Math.ceil(photos.length / 2));
     const photoRows = photoBlocks * 8;
     for (let rr = photoStartRow; rr < photoStartRow + photoRows; rr += 1) addRow(rr, 15);
-    r = photoStartRow + photoRows;
-    const footerRow = r;
-    addRow(footerRow, 23, xlsxMergedCell("أ/ فاطمة هزازي — مساعد الموجه الطلابي", footerRow, 0, 13)); merge(`A${footerRow}:H${footerRow}`);
+    const footerRow = photoStartRow + photoRows;
+    addRow(footerRow, 22, xlsxMergedCell("أ/ فاطمة هزازي", footerRow, 0, 13));
+    merge(`A${footerRow}:H${footerRow}`);
 
-    // الرسومات: شعار التقرير وصور الشواهد.
     const drawingPictures = [];
     const drawingRels = [];
     let picId = 1;
     let relIdCounter = 1;
     if (logoData && logoMediaName && logoFit) {
       const relId = `rId${relIdCounter++}`;
-      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${logoMediaName}" Id="${relId}"/>`);
-      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: "شعار التقرير", col: 0, row: 0, cx: logoFit.cx, cy: logoFit.cy, colOff: 170000, rowOff: 85000 }));
+      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/${logoMediaName}" Id="${relId}"/>`);
+      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: "شعار التقرير", col: 6, row: 0, cx: logoFit.cx, cy: logoFit.cy, colOff: 90000, rowOff: 40000 }));
     }
 
     for (let index = 0; index < photos.length; index += 1) {
@@ -2916,31 +2536,33 @@ async function exportExcel(selection = null) {
       const isOddLast = photos.length % 2 === 1 && index === photos.length - 1;
       const block = Math.floor(index / 2);
       const anchorRow = photoStartRow - 1 + block * 8;
-      const fit = fitImageEmu(dims.width, dims.height, isOddLast ? 5.4 : 3.0, 1.55);
+      const maxW = isOddLast ? 5.4 : 3.0;
+      const maxH = 1.55;
+      const fit = fitImageEmu(dims.width, dims.height, maxW, maxH);
       const relId = `rId${relIdCounter++}`;
-      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${mediaName}" Id="${relId}"/>`);
+      drawingRels.push(`<Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="/xl/media/${mediaName}" Id="${relId}"/>`);
       const col = isOddLast ? 1 : (index % 2 === 0 ? 0 : 4);
-      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: photo.name || `شاهد ${index + 1}`, col, row: anchorRow, cx: fit.cx, cy: fit.cy, colOff: isOddLast ? 180000 : 100000, rowOff: 70000 }));
+      const colOff = isOddLast ? 180000 : 100000;
+      drawingPictures.push(xlsxDrawingPicture({ relId, id: picId++, name: photo.name || `شاهد ${index + 1}`, col, row: anchorRow, cx: fit.cx, cy: fit.cy, colOff, rowOff: 70000 }));
     }
 
     const hasDrawing = drawingPictures.length > 0;
     const mergeXml = merges.length ? `<mergeCells count="${merges.length}">${merges.map((ref) => `<mergeCell ref="${ref}"/>`).join("")}</mergeCells>` : "";
-    const columns = [11, 15, 15, 15, 15, 15, 14, 17].map((width, i) => `<col min="${i + 1}" max="${i + 1}" width="${width}" customWidth="1"/>`).join("");
+    const columns = Array.from({ length: 8 }, (_, i) => `<col min="${i + 1}" max="${i + 1}" width="${i === 0 || i === 1 ? 12 : 13.2}" customWidth="1"/>`).join("");
     const printEndRow = footerRow;
-    const freezeRow = 13;
 
     const sheetXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheetPr><pageSetUpPr fitToPage="1" autoPageBreaks="0"/></sheetPr>
   <dimension ref="A1:H${printEndRow}"/>
-  <sheetViews><sheetView workbookViewId="0" rightToLeft="1" zoomScale="90" zoomScaleNormal="90"><pane ySplit="${freezeRow}" topLeftCell="A${freezeRow + 1}" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>
+  <sheetViews><sheetView workbookViewId="0" rightToLeft="1" zoomScale="90" zoomScaleNormal="90"/></sheetViews>
   <sheetFormatPr defaultRowHeight="18"/>
   <cols>${columns}</cols>
   <sheetData>${rows.join("")}</sheetData>
   ${mergeXml}
   <printOptions horizontalCentered="1" verticalCentered="0"/>
-  <pageMargins left="0.25" right="0.25" top="0.32" bottom="0.35" header="0.15" footer="0.18"/>
-  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="0" horizontalDpi="300" verticalDpi="300"/>
+  <pageMargins left="0.25" right="0.25" top="0.35" bottom="0.35" header="0.15" footer="0.15"/>
+  <pageSetup paperSize="9" orientation="portrait" fitToWidth="1" fitToHeight="1" horizontalDpi="300" verticalDpi="300"/>
   <headerFooter differentFirst="0" differentOddEven="0"><oddFooter>&amp;Cأ/ فاطمة هزازي</oddFooter></headerFooter>
   ${hasDrawing ? '<drawing r:id="rId1"/>' : ""}
 </worksheet>`;
@@ -2953,7 +2575,7 @@ async function exportExcel(selection = null) {
       const drawingRelXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${drawingRels.join("")}</Relationships>`;
       entries.push({ name: `xl/drawings/drawing${sheetNumber}.xml`, data: drawingXml });
       entries.push({ name: `xl/drawings/_rels/drawing${sheetNumber}.xml.rels`, data: drawingRelXml });
-      entries.push({ name: `xl/worksheets/_rels/sheet${sheetNumber}.xml.rels`, data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing${sheetNumber}.xml" Id="rId1"/></Relationships>` });
+      entries.push({ name: `xl/worksheets/_rels/sheet${sheetNumber}.xml.rels`, data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="/xl/drawings/drawing${sheetNumber}.xml" Id="rId1"/></Relationships>` });
       contentOverrides.push(`<Override PartName="/xl/drawings/drawing${sheetNumber}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/>`);
     }
 
@@ -2985,9 +2607,8 @@ async function exportExcel(selection = null) {
   entries.unshift({ name: "[Content_Types].xml", data: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${mediaMap.size ? '<Default Extension="jpeg" ContentType="image/jpeg"/>' : ""}<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${contentOverrides.join("")}</Types>` });
 
   const blob = makeZip(entries, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي-v11.xlsx`);
+  downloadBlob(blob, blob.type, `${exportFileStem(selectedWeeks)}-Excel-احترافي.xlsx`);
   toast(selectedWeeks.length === 1
-    ? "تم تصدير Excel للأسبوع المحدد مع الكليشة الجديدة والخطة اليومية"
-    : "تم تصدير Excel؛ كل أسبوع في ورقة مستقلة مع الكليشة الجديدة والخطة اليومية");
+    ? "تم تصدير تقرير Excel احترافي للأسبوع المحدد — RTL + A4 + الشواهد والصور"
+    : "تم تصدير Excel احترافي؛ كل أسبوع مُعبّأ في ورقة مستقلة ومهيأة للطباعة A4");
 }
-
